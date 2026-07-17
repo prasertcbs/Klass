@@ -1,7 +1,7 @@
 {
     "name": "Klass – Classroom Tools",
     "short_name": "Klass",
-    "description": "Classroom tools: random name picker, team assignment, presenter roulette, and seating chart generator. Works offline.",
+    "description": "Classroom tools: countdown timer, random name picker, team assignment, presenter roulette, seating chart generator, and QR sharer. Works offline.",
     "start_url": "./",
     "scope": "./",
     "display": "standalone",
@@ -49,6 +49,11 @@
         {
             "name": "KTempo Timer",
             "url": "./KTempo.html",
+            "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "QR Sharer",
+            "url": "./KQR.html",
             "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
         }
     ]

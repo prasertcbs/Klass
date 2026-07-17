@@ -1,7 +1,7 @@
 /* Klass service worker — precaches the whole app for offline use.
    Bump CACHE_VERSION whenever any file changes so installed clients update. */
 
-const CACHE_VERSION = 'klass-v8';
+const CACHE_VERSION = 'klass-v9';
 
 const PRECACHE = [
     './',
@@ -11,6 +11,7 @@ const PRECACHE = [
     './KPresenter.html',
     './KSeatingChart.html',
     './KTempo.html',
+    './KQR.html',
     './manifest.webmanifest',
     './chime.mp3',
     './assets/tailwind.js',
@@ -22,6 +23,8 @@ const PRECACHE = [
     './assets/ktempo/app.js',
     './assets/ktempo/timer.js',
     './assets/ktempo/audio.js',
+    './assets/kqr/qrcodegen.js',
+    './assets/kqr/app.js',
     './assets/fonts/inter.css',
     './assets/fonts/InterVariable.woff2',
     './assets/fonts/JetBrainsMono-Bold.ttf',

@@ -94,6 +94,24 @@ html.dark[data-app="ktempo"], html.dark .accent-ktempo {
     --ring: rgb(96 165 250 / 0.4);
 }
 
+/* ── KQR · purple ── */
+html[data-app="kqr"], .accent-kqr {
+    --accent: #7e22ce;
+    --accent-hover: #6b21a8;
+    --accent-fg: #7e22ce;
+    --accent-soft: #faf5ff;
+    --accent-border: #e9d5ff;
+    --ring: rgb(126 34 206 / 0.35);
+}
+html.dark[data-app="kqr"], html.dark .accent-kqr {
+    --accent: #7e22ce;
+    --accent-hover: #9333ea;
+    --accent-fg: #c084fc;
+    --accent-soft: rgb(192 132 252 / 0.15);
+    --accent-border: rgb(192 132 252 / 0.35);
+    --ring: rgb(192 132 252 / 0.4);
+}
+
 /* Launcher tiles: colored icon square per app */
 .k-tile {
     background-color: var(--accent-soft);

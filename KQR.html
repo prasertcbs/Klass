@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en" data-app="kqr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Sharer – Klass</title>
+    <meta name="description" content="Show a giant QR code on the projector so students can scan links instantly.">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <link rel="stylesheet" href="assets/accents.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <style>
+        /* QR codes need a white module field with quiet zone, even in dark mode. */
+        .qr-frame {
+            background: #fff;
+            border-radius: 12px;
+            padding: 16px;
+            line-height: 0;
+        }
+        #qrCanvas {
+            image-rendering: pixelated;
+            width: min(62vh, 100%, 560px);
+            height: auto;
+        }
+        .qr-caption {
+            font-size: clamp(1rem, 2.2vw, 1.5rem);
+            font-weight: 600;
+            word-break: break-all;
+        }
+        .chip {
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            padding: 4px 12px;
+            font-size: 12px;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: border-color 0.12s ease, background-color 0.12s ease;
+        }
+        .chip:hover { border-color: var(--accent-border); background: var(--accent-soft); }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="flex items-center gap-3">
+                    <div class="k-logo"><i class="fa-solid fa-graduation-cap"></i></div>
+                    <span class="text-lg font-bold">Klass</span>
+                </a>
+                <span class="k-badge">QR Sharer</span>
+            </div>
+            <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+            </button>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">QR Sharer</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Type a link, project the code, and let everyone scan it in seconds.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+
+            <div id="stageBox" class="k-stage p-8 min-h-[320px] flex flex-col items-center justify-center gap-5">
+                <div id="qrEmpty" class="k-status text-lg">Type a link below to generate a QR code</div>
+                <div id="qrFrame" class="qr-frame" hidden>
+                    <canvas id="qrCanvas" width="1" height="1"></canvas>
+                </div>
+                <div id="qrCaption" class="qr-caption t-accent text-center px-4" hidden></div>
+            </div>
+
+            <div class="k-card p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="k-card-title"><i class="fa-solid fa-link"></i>Link or Text</h2>
+                    <div class="k-badge"><span id="charCount">0</span><span class="font-normal">chars</span></div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <input type="text" id="dataInput" class="k-input flex-1 min-w-[240px] font-mono"
+                           placeholder="https://example.com/survey" autocomplete="off" spellcheck="false">
+                    <button id="pasteBtn" class="k-btn k-btn-secondary" title="Paste from clipboard">
+                        <i class="fa-solid fa-paste"></i>Paste
+                    </button>
+                    <button id="clearBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Clear input" title="Clear input">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    <button id="downloadBtn" class="k-btn k-btn-primary" disabled>
+                        <i class="fa-solid fa-download"></i>PNG
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 mt-4 pt-4" style="border-top: 1px solid var(--border);">
+                    <span class="k-label mr-1"><i class="fa-solid fa-clock-rotate-left"></i> Recent</span>
+                    <div id="historyChips" class="flex flex-wrap gap-2 flex-1 min-w-0">
+                        <span class="k-status text-xs" id="historyEmpty">Nothing shared yet</span>
+                    </div>
+                    <button id="clearHistoryBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Clear history" title="Clear history">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="statusBar" class="k-status text-center py-2" role="status"></div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 PrasertCBS &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <script src="assets/kqr/qrcodegen.js"></script>
+    <script src="assets/kqr/app.js"></script>
+    <script src="assets/app.js"></script>
+</body>
+</html>
