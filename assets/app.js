@@ -6,6 +6,17 @@ if ('serviceWorker' in navigator) {
             console.warn('Service worker registration failed:', err);
         });
     });
+
+    // When an updated service worker takes over (new deploy), reload once so
+    // the page immediately runs the new version instead of requiring a second
+    // manual reload. Skipped on first-ever install (no previous controller).
+    var hadController = !!navigator.serviceWorker.controller;
+    var reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (!hadController || reloaded) return;
+        reloaded = true;
+        window.location.reload();
+    });
 }
 
 (function () {

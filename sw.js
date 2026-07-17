@@ -1,7 +1,7 @@
 /* Klass service worker — precaches the whole app for offline use.
    Bump CACHE_VERSION whenever any file changes so installed clients update. */
 
-const CACHE_VERSION = 'klass-v6';
+const CACHE_VERSION = 'klass-v8';
 
 const PRECACHE = [
     './',
@@ -38,7 +38,10 @@ const PRECACHE = [
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_VERSION)
-            .then((cache) => cache.addAll(PRECACHE))
+            // Version query busts the HTTP cache so a new precache never captures
+            // stale copies (GitHub Pages serves max-age=600). Fetch matching uses
+            // ignoreSearch, so query-less page requests still hit these entries.
+            .then((cache) => cache.addAll(PRECACHE.map((url) => `${url}?v=${CACHE_VERSION}`)))
             .then(() => self.skipWaiting())
     );
 });
