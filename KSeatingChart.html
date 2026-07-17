@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-app="kseatingchart">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="assets/fonts/inter.css">
     <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="assets/klass.css">
+    <link rel="stylesheet" href="assets/accents.css">
     <script src="assets/tailwind.js"></script>
     <script src="assets/theme.js"></script>
     <style>
@@ -70,10 +71,13 @@
 <body class="font-sans min-h-screen flex flex-col">
     <nav class="k-nav">
         <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
-            <a href="index.html" class="flex items-center gap-3">
-                <div class="k-logo"><i class="fa-solid fa-graduation-cap"></i></div>
-                <span class="text-lg font-bold">Klass</span>
-            </a>
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="flex items-center gap-3">
+                    <div class="k-logo"><i class="fa-solid fa-graduation-cap"></i></div>
+                    <span class="text-lg font-bold">Klass</span>
+                </a>
+                <span class="k-badge">Seating Chart</span>
+            </div>
             <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
                 <i class="fa-solid fa-moon"></i>
             </button>

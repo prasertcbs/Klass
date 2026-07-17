@@ -10,6 +10,8 @@ An installable, offline-capable PWA with four classroom tools sharing one design
 
 All dependencies (Tailwind, Font Awesome, Inter font) are vendored under `assets/` — no CDN, fully offline after first visit.
 
+Office-suite-style identity: each app has its own accent color (KRandom emerald, KAssignTeam rose, KPresenter orange, KSeatingChart cyan, KTempo blue) defined in `assets/accents.css` via a `data-app` attribute on `<html>`, while the chrome stays neutral and the Klass logo stays indigo.
+
 ## Run locally
 
 PWAs require HTTP(S); `file://` won't work. From this folder:

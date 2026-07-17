@@ -1,7 +1,7 @@
 /* Klass service worker — precaches the whole app for offline use.
    Bump CACHE_VERSION whenever any file changes so installed clients update. */
 
-const CACHE_VERSION = 'klass-v3';
+const CACHE_VERSION = 'klass-v4';
 
 const PRECACHE = [
     './',
@@ -17,6 +17,7 @@ const PRECACHE = [
     './assets/theme.js',
     './assets/app.js',
     './assets/klass.css',
+    './assets/accents.css',
     './assets/ktempo/ktempo.css',
     './assets/ktempo/app.js',
     './assets/ktempo/timer.js',

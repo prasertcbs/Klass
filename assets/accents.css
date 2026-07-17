@@ -1,0 +1,106 @@
+/* accents.css — per-app identity colors (Office-suite style).
+   Each app page sets <html data-app="…">; the .accent-<app> aliases color
+   the launcher tiles on index.html. Overrides only the six accent variables
+   from klass.css — chrome stays neutral, the Klass logo stays indigo.
+   All pairings AA-checked: white on --accent, --accent-fg on surfaces. */
+
+/* ── KRandom · emerald ── */
+html[data-app="krandom"], .accent-krandom {
+    --accent: #047857;
+    --accent-hover: #065f46;
+    --accent-fg: #047857;
+    --accent-soft: #ecfdf5;
+    --accent-border: #a7f3d0;
+    --ring: rgb(4 120 87 / 0.35);
+}
+html.dark[data-app="krandom"], html.dark .accent-krandom {
+    --accent: #047857;
+    --accent-hover: #059669;
+    --accent-fg: #34d399;
+    --accent-soft: rgb(52 211 153 / 0.15);
+    --accent-border: rgb(52 211 153 / 0.35);
+    --ring: rgb(52 211 153 / 0.4);
+}
+
+/* ── KAssignTeam · rose ── */
+html[data-app="kassignteam"], .accent-kassignteam {
+    --accent: #be123c;
+    --accent-hover: #9f1239;
+    --accent-fg: #be123c;
+    --accent-soft: #fff1f2;
+    --accent-border: #fecdd3;
+    --ring: rgb(190 18 60 / 0.35);
+}
+html.dark[data-app="kassignteam"], html.dark .accent-kassignteam {
+    --accent: #be123c;
+    --accent-hover: #e11d48;
+    --accent-fg: #fb7185;
+    --accent-soft: rgb(251 113 133 / 0.15);
+    --accent-border: rgb(251 113 133 / 0.35);
+    --ring: rgb(251 113 133 / 0.4);
+}
+
+/* ── KPresenter · orange ── */
+html[data-app="kpresenter"], .accent-kpresenter {
+    --accent: #c2410c;
+    --accent-hover: #9a3412;
+    --accent-fg: #c2410c;
+    --accent-soft: #fff7ed;
+    --accent-border: #fed7aa;
+    --ring: rgb(194 65 12 / 0.35);
+}
+html.dark[data-app="kpresenter"], html.dark .accent-kpresenter {
+    --accent: #c2410c;
+    --accent-hover: #ea580c;
+    --accent-fg: #fb923c;
+    --accent-soft: rgb(251 146 60 / 0.15);
+    --accent-border: rgb(251 146 60 / 0.35);
+    --ring: rgb(251 146 60 / 0.4);
+}
+
+/* ── KSeatingChart · cyan ── */
+html[data-app="kseatingchart"], .accent-kseatingchart {
+    --accent: #0e7490;
+    --accent-hover: #155e75;
+    --accent-fg: #0e7490;
+    --accent-soft: #ecfeff;
+    --accent-border: #a5f3fc;
+    --ring: rgb(14 116 144 / 0.35);
+}
+html.dark[data-app="kseatingchart"], html.dark .accent-kseatingchart {
+    --accent: #0e7490;
+    --accent-hover: #0891b2;
+    --accent-fg: #22d3ee;
+    --accent-soft: rgb(34 211 238 / 0.15);
+    --accent-border: rgb(34 211 238 / 0.35);
+    --ring: rgb(34 211 238 / 0.4);
+}
+
+/* ── KTempo · blue ── */
+html[data-app="ktempo"], .accent-ktempo {
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-fg: #2563eb;
+    --accent-soft: #eff6ff;
+    --accent-border: #bfdbfe;
+    --ring: rgb(37 99 235 / 0.35);
+}
+html.dark[data-app="ktempo"], html.dark .accent-ktempo {
+    --accent: #2563eb;
+    --accent-hover: #3b82f6;
+    --accent-fg: #60a5fa;
+    --accent-soft: rgb(96 165 250 / 0.15);
+    --accent-border: rgb(96 165 250 / 0.35);
+    --ring: rgb(96 165 250 / 0.4);
+}
+
+/* Launcher tiles: colored icon square per app */
+.k-tile {
+    background-color: var(--accent-soft);
+    color: var(--accent-fg);
+}
+
+/* The Klass logo is the suite brand — always indigo, regardless of app accent */
+.k-logo {
+    background-color: #4f46e5;
+}

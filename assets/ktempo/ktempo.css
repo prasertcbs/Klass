@@ -74,7 +74,7 @@ body {
   border-radius: 0.375rem;
   font-size: 12px;
 }
-.title-home .app-name { color: var(--text-faint); font-weight: 600; }
+.title-home .app-name { color: var(--accent-fg); font-weight: 600; }
 .toolbar {
   display: flex;
   gap: 2px;

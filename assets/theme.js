@@ -35,7 +35,11 @@ if (typeof tailwind !== 'undefined') tailwind.config = {
     function apply(theme) {
         document.documentElement.classList.toggle('dark', theme === 'dark');
         const meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f172a' : '#4f46e5');
+        if (meta) {
+            const accent = getComputedStyle(document.documentElement)
+                .getPropertyValue('--accent').trim() || '#4f46e5';
+            meta.setAttribute('content', theme === 'dark' ? '#0f172a' : accent);
+        }
         const icon = document.querySelector('#themeToggle i');
         if (icon) icon.className = theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
     }

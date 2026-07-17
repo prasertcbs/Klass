@@ -48,7 +48,7 @@ export class TimerEngine extends EventTarget {
     // Observable-ish state (rendered by app.js on "change").
     this.state = State.Idle;
     this.displayText = "00:00";
-    this.displayColorHex = "#4f46e5";
+    this.displayColorHex = "#2563eb";
     this.isAlerting = false;
     this.showCountdown = true;
     this.errorMessage = "";
@@ -62,8 +62,8 @@ export class TimerEngine extends EventTarget {
     this.displayColorHex = this._colorNormal();
   }
 
-  // ── Theme-aware urgency colors (color-blind conscious; normal = Klass indigo) ──
-  _colorNormal() { return this.isDarkTheme ? "#818cf8" : "#4f46e5"; }
+  // ── Theme-aware urgency colors (color-blind conscious; normal = KTempo blue) ──
+  _colorNormal() { return this.isDarkTheme ? "#60a5fa" : "#2563eb"; }
   _colorWarning() { return this.isDarkTheme ? "#F59E0B" : "#D97706"; }
   _colorAlert() { return this.isDarkTheme ? "#EF4444" : "#DC2626"; }
   _colorClock() { return this.isDarkTheme ? "#8B5CF6" : "#7C3AED"; }
