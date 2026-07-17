@@ -1,7 +1,7 @@
 /* Klass service worker — precaches the whole app for offline use.
    Bump CACHE_VERSION whenever any file changes so installed clients update. */
 
-const CACHE_VERSION = 'klass-v9';
+const CACHE_VERSION = 'klass-v10';
 
 const PRECACHE = [
     './',
@@ -16,6 +16,7 @@ const PRECACHE = [
     './chime.mp3',
     './assets/tailwind.js',
     './assets/theme.js',
+    './assets/klass-util.js',
     './assets/app.js',
     './assets/klass.css',
     './assets/accents.css',

@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="assets/accents.css">
     <script src="assets/tailwind.js"></script>
     <script src="assets/theme.js"></script>
+    <script src="assets/klass-util.js"></script>
     <style>
         .team-group {
             background-color: var(--grp-soft);
@@ -189,13 +190,6 @@
             return [];
         }
 
-        function shuffleArray(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-        }
-
         function balancedGroups(studentsArr, nGroups) {
             let total = studentsArr.length;
             let baseSize = Math.floor(total / nGroups);
@@ -284,7 +278,7 @@
             document.getElementById('assignBtn').disabled = true;
             setStatus('Assigning teams...');
 
-            shuffleArray(students);
+            students = KlassUtil.shuffle(students);
             groups = balancedGroups(students, nGroups);
             groupData = [];
             buildSkeleton(nGroups, students);
@@ -305,15 +299,7 @@
         function downloadCSV() {
             if (!groupData.length) return;
             const rows = [['Group', 'ID', 'Name'], ...groupData.map(row => [row.group, row.id, row.name])];
-            const csvContent = rows.map(row => row.join(',')).join('\n');
-            const utf8BOM = '\uFEFF';
-            const blob = new Blob([utf8BOM + csvContent], {type: 'text/csv'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'group_assignments.csv';
-            a.click();
-            URL.revokeObjectURL(url);
+            KlassUtil.downloadCsv('group_assignments.csv', KlassUtil.toCsv(rows));
             setStatus('CSV downloaded');
         }
     </script>

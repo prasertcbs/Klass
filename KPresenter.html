@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="assets/accents.css">
     <script src="assets/tailwind.js"></script>
     <script src="assets/theme.js"></script>
+    <script src="assets/klass-util.js"></script>
     <style>
         .roulette {
             position: relative;
@@ -549,6 +550,8 @@ function renderHistory(){
 
 function exportHistory(){
   if(!state.drawHistory.length){showToast('No history to export');return;}
+  // Quotes only when needed and joins with CRLF, unlike KlassUtil.toCsv \u2014 kept
+  // as-is so exported history files stay byte-for-byte what they always were.
   function esc(s){
     if(s==null) return '';
     s = String(s);
@@ -558,16 +561,8 @@ function exportHistory(){
   let rows = ['No,Time,Team,Member'];
   state.drawHistory.slice().reverse().forEach((r,i)=>rows.push(`${i+1},${esc(r.time)},${esc(r.team)},${esc(r.member)}`));
   let csv = rows.join('\r\n');
-  const bom = '\uFEFF';
-  const blob = new Blob([bom + csv], {type: 'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'draw-history-'+(new Date().toISOString().replace(/:/g, '').slice(0,17))+'.csv';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  const name = 'draw-history-'+(new Date().toISOString().replace(/:/g, '').slice(0,17))+'.csv';
+  KlassUtil.downloadCsv(name, csv);
 }
 
 function confetti(){

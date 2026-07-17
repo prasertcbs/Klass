@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="assets/accents.css">
     <script src="assets/tailwind.js"></script>
     <script src="assets/theme.js"></script>
+    <script src="assets/klass-util.js"></script>
     <style>
         .stage-text {
             font-size: clamp(2.5rem, 10vw, 8rem);
@@ -308,10 +309,7 @@ six</textarea>
 
         function shufflePool() {
             readPool();
-            for (let i = state.pool.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [state.pool[i], state.pool[j]] = [state.pool[j], state.pool[i]];
-            }
+            state.pool = KlassUtil.shuffle(state.pool);
             writePool();
             setStatus('List shuffled.');
         }
@@ -363,24 +361,8 @@ six</textarea>
                 formatTimestamp(entry.timestamp),
                 entry.name,
             ]);
-            const csv = [header, ...rows]
-                .map((row) =>
-                    row
-                        .map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`)
-                        .join(',')
-                )
-                .join('\n');
-            const bom = '\uFEFF';
-            const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
             const stamp = new Date().toISOString().slice(0, 10);
-            link.download = `picked-names-${stamp}.csv`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
+            KlassUtil.downloadCsv(`picked-names-${stamp}.csv`, KlassUtil.toCsv([header, ...rows]));
             setStatus('Downloaded as CSV.');
         }
 
