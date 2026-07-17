@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Name Picker – Klass</title>
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <style>
+        .stage-text {
+            font-size: clamp(2.5rem, 10vw, 8rem);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
+        .flip {
+            animation: flip 0.35s ease-in-out;
+        }
+        @keyframes flip {
+            0% { transform: rotateX(0deg); opacity: 0.85; }
+            50% { transform: rotateX(85deg); opacity: 0.65; }
+            100% { transform: rotateX(0deg); opacity: 1; }
+        }
+        .winner {
+            animation: pop 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        @keyframes pop {
+            0% { transform: scale(0.9); }
+            55% { transform: scale(1.08); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-3">
+                <div class="k-logo"><i class="fa-solid fa-graduation-cap"></i></div>
+                <span class="text-lg font-bold">Klass</span>
+            </a>
+            <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+            </button>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Random Name Picker</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Fair and random student selector for classroom participation.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+
+            <div id="stageBox" class="k-stage p-8 min-h-[280px] flex items-center justify-center">
+                <div id="stageText" class="stage-text t-accent text-center px-4">Ready</div>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="k-card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="k-card-title"><i class="fa-solid fa-list"></i>Name Pool</h2>
+                        <div class="k-badge"><span id="poolCount">0</span><span class="font-normal">names</span></div>
+                    </div>
+                    <textarea id="poolTextarea" rows="6" placeholder="Enter one name per line..." class="k-input w-full resize-none font-mono">one
+two
+three
+four
+five
+six</textarea>
+
+                    <div class="flex flex-wrap gap-2 mt-4">
+                        <button id="startBtn" class="k-btn k-btn-primary flex-1">
+                            <i class="fa-solid fa-play"></i>Start
+                        </button>
+                        <button id="stopBtn" class="k-btn k-btn-secondary">
+                            <i class="fa-solid fa-stop"></i>Stop
+                        </button>
+                        <button id="shuffleBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Shuffle list" title="Shuffle list">
+                            <i class="fa-solid fa-shuffle"></i>
+                        </button>
+                        <button id="undoBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Undo last pick" title="Undo last pick">
+                            <i class="fa-solid fa-rotate-left"></i>
+                        </button>
+                        <button id="resetBtn" class="k-btn k-btn-danger k-btn-icon" aria-label="Reset all" title="Reset all">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-4 mt-4 pt-4" style="border-top: 1px solid var(--border);">
+                        <div class="flex items-center gap-2">
+                            <label for="durationInput" class="k-label">Duration</label>
+                            <input type="number" id="durationInput" min="1" max="60" value="4" class="k-input w-16 text-center">
+                            <span class="k-label">s</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="speedInput" class="k-label">Speed</label>
+                            <input type="number" id="speedInput" min="30" max="300" step="10" value="300" class="k-input w-20 text-center">
+                            <span class="k-label">ms</span>
+                        </div>
+                        <label class="flex items-center gap-2 k-label cursor-pointer">
+                            <input type="checkbox" id="removeCheckbox" checked class="k-check">
+                            Remove picked
+                        </label>
+                    </div>
+                </div>
+
+                <div class="k-card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="k-card-title"><i class="fa-solid fa-check-circle"></i>Picked Names</h2>
+                        <div class="k-badge"><span id="pickedCount">0</span><span class="font-normal">picked</span></div>
+                    </div>
+                    <textarea id="pickedTextarea" readonly rows="6" placeholder="Picked names will appear here..." class="k-input w-full resize-none font-mono"></textarea>
+
+                    <div class="flex gap-2 mt-4">
+                        <button id="copyPickedBtn" class="k-btn k-btn-secondary flex-1">
+                            <i class="fa-solid fa-copy"></i>Copy
+                        </button>
+                        <button id="downloadPickedBtn" class="k-btn k-btn-secondary flex-1">
+                            <i class="fa-solid fa-download"></i>Download
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="statusBar" class="k-status text-center py-2" role="status">
+                Enter names and press Start
+            </div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 PrasertCBS &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <script>
+        const els = {
+            poolTA: document.getElementById('poolTextarea'),
+            pickedTA: document.getElementById('pickedTextarea'),
+            duration: document.getElementById('durationInput'),
+            speed: document.getElementById('speedInput'),
+            remove: document.getElementById('removeCheckbox'),
+            start: document.getElementById('startBtn'),
+            stop: document.getElementById('stopBtn'),
+            shuffle: document.getElementById('shuffleBtn'),
+            undo: document.getElementById('undoBtn'),
+            reset: document.getElementById('resetBtn'),
+            copyPicked: document.getElementById('copyPickedBtn'),
+            downloadPicked: document.getElementById('downloadPickedBtn'),
+            stage: document.getElementById('stageText'),
+            stageBox: document.getElementById('stageBox'),
+            status: document.getElementById('statusBar'),
+            poolCount: document.getElementById('poolCount'),
+            pickedCount: document.getElementById('pickedCount'),
+        };
+
+        const state = {
+            pool: [],
+            picked: [],
+            spinning: false,
+            intervalId: null,
+            timeoutId: null,
+            lastRemoved: null,
+            get durationMs() {
+                return clampNum(parseInt(els.duration.value, 10), 1, 60) * 1000;
+            },
+            get flipMs() {
+                return clampNum(parseInt(els.speed.value, 10), 30, 300);
+            },
+        };
+
+        function clampNum(n, min, max) {
+            n = isFinite(n) ? n : min;
+            return Math.min(Math.max(n, min), max);
+        }
+
+        function readPool() {
+            const raw = els.poolTA.value
+                .split(/\r?\n/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+            const seen = new Set();
+            const out = [];
+            for (const name of raw) {
+                const k = name.toLowerCase();
+                if (!seen.has(k)) {
+                    seen.add(k);
+                    out.push(name);
+                }
+            }
+            state.pool = out;
+            updateCounts();
+            return out;
+        }
+
+        function writePool() {
+            els.poolTA.value = state.pool.join('\n');
+            updateCounts();
+        }
+
+        function formatTimestamp(date) {
+            const d = date instanceof Date ? date : new Date(date);
+            const pad = (n) => String(n).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            const mm = pad(d.getMonth() + 1);
+            const dd = pad(d.getDate());
+            const hh = pad(d.getHours());
+            const mi = pad(d.getMinutes());
+            const ss = pad(d.getSeconds());
+            return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+        }
+
+        function writePicked() {
+            const lines = state.picked.map(
+                (entry, idx) => `${idx + 1}. [${formatTimestamp(entry.timestamp)}] ${entry.name}`
+            );
+            els.pickedTA.value = lines.join('\n');
+            els.downloadPicked.disabled = state.picked.length === 0;
+            updateCounts();
+        }
+
+        function updateCounts() {
+            els.poolCount.textContent = state.pool.length;
+            els.pickedCount.textContent = state.picked.length;
+            els.start.disabled = state.spinning || state.pool.length === 0;
+            els.stop.disabled = !state.spinning;
+            els.undo.disabled = !state.lastRemoved || state.spinning;
+        }
+
+        function setStatus(msg) {
+            els.status.textContent = msg;
+        }
+
+        function renderStage(text, winner = false) {
+            els.stage.textContent = text || '—';
+            els.stage.classList.remove('flip', 'winner');
+            void els.stage.offsetWidth;
+            els.stage.classList.add(winner ? 'winner' : 'flip');
+            els.stageBox.classList.toggle('k-stage-win', winner);
+        }
+
+        function startSpin() {
+            if (state.spinning) return;
+            readPool();
+            if (state.pool.length === 0) {
+                setStatus('Enter at least one name.');
+                return;
+            }
+
+            state.spinning = true;
+            updateCounts();
+            toggleEditing(false);
+            setStatus('Spinning...');
+
+            state.intervalId = setInterval(() => {
+                const i = Math.floor(Math.random() * state.pool.length);
+                renderStage(state.pool[i], false);
+            }, state.flipMs);
+
+            state.timeoutId = setTimeout(finalizePick, state.durationMs);
+        }
+
+        function finalizePick() {
+            if (!state.spinning) return;
+            clearInterval(state.intervalId);
+            state.intervalId = null;
+
+            const idx = Math.floor(Math.random() * state.pool.length);
+            const winner = state.pool[idx];
+            renderStage(winner, true);
+
+            if (els.remove.checked) {
+                const entry = { name: winner, timestamp: new Date() };
+                state.lastRemoved = entry;
+                state.pool.splice(idx, 1);
+                writePool();
+                state.picked.push(entry);
+                writePicked();
+            } else {
+                state.lastRemoved = null;
+            }
+
+            state.spinning = false;
+            updateCounts();
+            toggleEditing(true);
+            setStatus('Winner: ' + winner + (els.remove.checked ? ' (removed from pool)' : ''));
+        }
+
+        function stopSpin() {
+            if (!state.spinning) return;
+            clearTimeout(state.timeoutId);
+            state.timeoutId = null;
+            finalizePick();
+        }
+
+        function shufflePool() {
+            readPool();
+            for (let i = state.pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [state.pool[i], state.pool[j]] = [state.pool[j], state.pool[i]];
+            }
+            writePool();
+            setStatus('List shuffled.');
+        }
+
+        function undoLast() {
+            if (!state.lastRemoved) return;
+            const entry = state.lastRemoved;
+            state.lastRemoved = null;
+            state.pool.push(entry.name);
+            state.picked = state.picked.filter((record) => record !== entry);
+            writePool();
+            writePicked();
+            updateCounts();
+            setStatus(`Restored: ${entry.name}`);
+        }
+
+        function resetAll() {
+            if (!confirm('Clear both lists and reset settings?')) return;
+            state.pool = [];
+            state.picked = [];
+            state.lastRemoved = null;
+            state.spinning = false;
+            els.poolTA.value = '';
+            els.duration.value = 4;
+            els.speed.value = 300;
+            els.remove.checked = true;
+            renderStage('Ready');
+            writePicked();
+            updateCounts();
+            setStatus('Reset complete.');
+            toggleEditing(true);
+        }
+
+        function copyPicked() {
+            navigator.clipboard
+                .writeText(els.pickedTA.value)
+                .then(() => setStatus('Copied to clipboard.'))
+                .catch(() => setStatus('Copy failed.'));
+        }
+
+        function downloadPicked() {
+            if (!state.picked.length) {
+                setStatus('No picked names to download.');
+                return;
+            }
+            const header = ['No', 'Timestamp', 'Name'];
+            const rows = state.picked.map((entry, idx) => [
+                idx + 1,
+                formatTimestamp(entry.timestamp),
+                entry.name,
+            ]);
+            const csv = [header, ...rows]
+                .map((row) =>
+                    row
+                        .map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`)
+                        .join(',')
+                )
+                .join('\n');
+            const bom = '\uFEFF';
+            const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const stamp = new Date().toISOString().slice(0, 10);
+            link.download = `picked-names-${stamp}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            setStatus('Downloaded as CSV.');
+        }
+
+        function toggleEditing(enabled) {
+            els.poolTA.readOnly = !enabled;
+            els.shuffle.disabled = !enabled;
+            els.reset.disabled = !enabled;
+            els.copyPicked.disabled = !enabled && els.pickedTA.value.length === 0;
+        }
+
+        els.start.addEventListener('click', startSpin);
+        els.stop.addEventListener('click', stopSpin);
+        els.shuffle.addEventListener('click', shufflePool);
+        els.undo.addEventListener('click', undoLast);
+        els.reset.addEventListener('click', resetAll);
+        els.copyPicked.addEventListener('click', copyPicked);
+        els.downloadPicked.addEventListener('click', downloadPicked);
+
+        els.poolTA.addEventListener('input', () => {
+            readPool();
+            setStatus('');
+        });
+        els.duration.addEventListener('change', () => {
+            els.duration.value = clampNum(parseInt(els.duration.value, 10), 1, 60);
+        });
+        els.speed.addEventListener('change', () => {
+            els.speed.value = clampNum(parseInt(els.speed.value, 10), 30, 300);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            const active = document.activeElement;
+            const typing = active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT');
+            if (typing) return;
+            if (e.code === 'Space' || e.code === 'Enter') {
+                e.preventDefault();
+                if (state.spinning) stopSpin();
+                else startSpin();
+            }
+        });
+
+        readPool();
+    </script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

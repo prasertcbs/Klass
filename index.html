@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Klass – Classroom Tools</title>
+    <meta name="description" content="Classroom tools: random name picker, team assignment, presenter roulette, and seating chart generator. Works offline.">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+</head>
+<body class="font-sans min-h-screen flex flex-col">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-3">
+                <div class="k-logo"><i class="fa-solid fa-graduation-cap"></i></div>
+                <span class="text-lg font-bold">Klass</span>
+            </a>
+            <div class="flex items-center gap-2">
+                <button id="installBtn" class="k-btn k-btn-primary hidden">
+                    <i class="fa-solid fa-download"></i>Install app
+                </button>
+                <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 py-12">
+        <header class="mb-10 text-center">
+            <h1 class="text-3xl md:text-4xl font-bold mb-3">Classroom Tools</h1>
+            <p class="k-status max-w-xl mx-auto text-base">Four simple tools for fair, engaging classroom sessions.
+                Everything runs in your browser and works offline once installed.</p>
+        </header>
+
+        <div class="grid gap-5 sm:grid-cols-2">
+            <a href="KRandom.html" class="k-card p-6 flex items-start gap-4 hover:border-[var(--accent-border)] transition-colors">
+                <div class="w-12 h-12 rounded-lg flex-none flex items-center justify-center" style="background-color: var(--accent-soft); color: var(--accent-fg);">
+                    <i class="fa-solid fa-dice text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-lg mb-1">Random Name Picker</h2>
+                    <p class="k-status">Pick a student at random for classroom participation, with undo and CSV export.</p>
+                </div>
+            </a>
+
+            <a href="KAssignTeam.html" class="k-card p-6 flex items-start gap-4 hover:border-[var(--accent-border)] transition-colors">
+                <div class="w-12 h-12 rounded-lg flex-none flex items-center justify-center" style="background-color: var(--accent-soft); color: var(--accent-fg);">
+                    <i class="fa-solid fa-people-group text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-lg mb-1">Team Assignment</h2>
+                    <p class="k-status">Split students into balanced random teams from a pasted list or CSV file.</p>
+                </div>
+            </a>
+
+            <a href="KPresenter.html" class="k-card p-6 flex items-start gap-4 hover:border-[var(--accent-border)] transition-colors">
+                <div class="w-12 h-12 rounded-lg flex-none flex items-center justify-center" style="background-color: var(--accent-soft); color: var(--accent-fg);">
+                    <i class="fa-solid fa-person-chalkboard text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-lg mb-1">Presenter Roulette</h2>
+                    <p class="k-status">Spin for a team, then a member — fair rotation for presentations and activities.</p>
+                </div>
+            </a>
+
+            <a href="KSeatingChart.html" class="k-card p-6 flex items-start gap-4 hover:border-[var(--accent-border)] transition-colors">
+                <div class="w-12 h-12 rounded-lg flex-none flex items-center justify-center" style="background-color: var(--accent-soft); color: var(--accent-fg);">
+                    <i class="fa-solid fa-chair text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-lg mb-1">Seating Chart</h2>
+                    <p class="k-status">Generate randomized seating charts that maximize distance between students.</p>
+                </div>
+            </a>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 flex items-center justify-center gap-2">
+            <span>&copy; 2025 PrasertCBS &middot; Klass works offline once installed.</span>
+        </div>
+    </footer>
+
+    <script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Assignment – Klass</title>
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <style>
+        .team-group {
+            background-color: var(--surface-2);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 0.75rem;
+        }
+        .name-card {
+            background-color: var(--surface);
+            border: 1px solid var(--border-strong);
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            line-height: 1.4;
+            transition: all 0.3s ease;
+        }
+        .name-card.final {
+            border-color: var(--accent-border);
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-3">
+                <div class="k-logo"><i class="fa-solid fa-graduation-cap"></i></div>
+                <span class="text-lg font-bold">Klass</span>
+            </a>
+            <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+            </button>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Team Assignment</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Quickly generate and manage balanced student teams with random assignment.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+
+            <div class="grid gap-6 lg:grid-cols-3">
+                <div class="lg:col-span-2 k-card p-6">
+                    <h2 class="k-card-title mb-4"><i class="fa-solid fa-users"></i>Student Data</h2>
+                    <textarea id="studentText" rows="6" placeholder="Enter student data (ID, Name per line)...&#10;12345, John Doe&#10;67890, Jane Smith" class="k-input w-full resize-none font-mono"></textarea>
+
+                    <div class="mt-4">
+                        <label for="fileInput" class="k-label block mb-2">
+                            <i class="fa-solid fa-file-csv mr-1"></i>Or upload CSV file
+                        </label>
+                        <input type="file" id="fileInput" accept=".csv" class="k-file block w-full text-sm t-muted"/>
+                    </div>
+                </div>
+
+                <div class="k-card p-6">
+                    <h2 class="k-card-title mb-4"><i class="fa-solid fa-gear"></i>Settings</h2>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label for="groupCount" class="k-label block mb-2">Number of Groups</label>
+                            <input type="number" id="groupCount" min="2" max="20" value="3" class="k-input w-full text-center">
+                        </div>
+
+                        <button id="assignBtn" onclick="randomizeGroups()" class="k-btn k-btn-primary w-full">
+                            <i class="fa-solid fa-shuffle"></i>Assign Groups
+                        </button>
+
+                        <button id="downloadBtn" onclick="downloadCSV()" class="k-btn k-btn-secondary w-full hidden">
+                            <i class="fa-solid fa-download"></i>Download CSV
+                        </button>
+                    </div>
+
+                    <div id="statusBar" class="k-status mt-4 pt-4 text-center" style="border-top: 1px solid var(--border);" role="status">
+                        Enter student data to begin
+                    </div>
+                </div>
+            </div>
+
+            <div class="k-card p-6">
+                <h2 class="k-card-title mb-6"><i class="fa-solid fa-people-group"></i>Assigned Teams</h2>
+                <div id="result" class="space-y-4">
+                    <div class="text-center t-faint py-8">
+                        <i class="fa-solid fa-users text-4xl mb-3 opacity-40"></i>
+                        <p>Configure settings and click "Assign Groups" to generate teams</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 PrasertCBS &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <script>
+        let groups = [];
+        let groupData = [];
+        let students = [];
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                document.getElementById('studentText').value = evt.target.result;
+            };
+            reader.readAsText(file);
+        });
+
+        function parseInput() {
+            const text = document.getElementById('studentText').value.trim();
+            if (text) {
+                const firstLine = text.split('\n')[0];
+                const hasTabs = firstLine.includes('\t');
+                const hasCommas = firstLine.includes(',');
+
+                let parsedData = text
+                    .split('\n')
+                    .map(row => {
+                        const separator = hasTabs ? '\t' : ',';
+                        return row.split(separator).map(field => field.trim());
+                    })
+                    .filter(arr => arr.length >= 1 && arr[0]);
+
+                if (parsedData.every(row => row.length === 1)) {
+                    parsedData = parsedData.map((row, index) => [String(index + 1), row[0]]);
+                } else {
+                    parsedData = parsedData.filter(arr => arr.length >= 2 && arr[0] && arr[1]);
+                }
+
+                return parsedData;
+            }
+            return [];
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        function balancedGroups(studentsArr, nGroups) {
+            let total = studentsArr.length;
+            let baseSize = Math.floor(total / nGroups);
+            let extras = total % nGroups;
+            let result = [];
+            let idx = 0;
+            for (let g = 0; g < nGroups; g++) {
+                let thisGroupSize = baseSize + (g < extras ? 1 : 0);
+                let thisGroup = studentsArr.slice(idx, idx + thisGroupSize);
+                result.push(thisGroup);
+                idx += thisGroupSize;
+            }
+            return result;
+        }
+
+        function buildSkeleton(groupsCount, studentsArr) {
+            let html = '';
+            let balanced = balancedGroups(studentsArr, groupsCount);
+            balanced.forEach((grp, i) => {
+                html += `
+                    <div class="team-group p-4">
+                        <div class="flex items-center gap-3 mb-3">
+                            <span class="text-lg font-bold t-accent">Group ${i + 1}</span>
+                            <span class="k-status">${grp.length} members</span>
+                        </div>
+                        <div class="flex flex-wrap gap-2">`;
+                grp.forEach((_, j) => {
+                    html += `<div class="name-card" id="card-${i}-${j}">
+                        <span class="t-faint">...</span>
+                    </div>`;
+                });
+                html += `</div></div>`;
+            });
+            document.getElementById('result').innerHTML = html;
+        }
+
+        function animateCards(assignedGroups, studentsArr) {
+            let cards = [];
+            assignedGroups.forEach((grp, gi) => {
+                grp.forEach((stu, si) => {
+                    cards.push({gid: gi, sid: si, final: stu});
+                });
+            });
+            cards.forEach((card, idx) => {
+                let elem = document.getElementById(`card-${card.gid}-${card.sid}`);
+                let duration = 1500 + Math.random() * 500;
+                let interval = 75;
+                let spins = setInterval(() => {
+                    let randIdx = Math.floor(Math.random() * studentsArr.length);
+                    elem.innerHTML = `<span class="t-muted">${studentsArr[randIdx][1]}</span><br><span class="text-xs t-faint">${studentsArr[randIdx][0]}</span>`;
+                    elem.style.opacity = '0.7';
+                }, interval);
+                setTimeout(() => {
+                    clearInterval(spins);
+                    elem.innerHTML = `<span class="t-strong font-medium">${card.final[1]}</span><br><span class="text-xs t-faint">${card.final[0]}</span>`;
+                    elem.style.opacity = '1';
+                    elem.classList.add('final');
+                }, duration);
+            });
+        }
+
+        function setStatus(msg) {
+            document.getElementById('statusBar').textContent = msg;
+        }
+
+        function randomizeGroups() {
+            students = parseInput();
+            const nGroups = parseInt(document.getElementById('groupCount').value, 10);
+            if (!students.length) {
+                setStatus('Please enter student data');
+                return;
+            }
+            if (nGroups < 2) {
+                setStatus('Minimum 2 groups required');
+                return;
+            }
+            if (nGroups > students.length) {
+                setStatus('More groups than students');
+                return;
+            }
+            if (nGroups > 20) {
+                setStatus('Maximum 20 groups allowed');
+                return;
+            }
+
+            document.getElementById('assignBtn').disabled = true;
+            setStatus('Assigning teams...');
+
+            shuffleArray(students);
+            groups = balancedGroups(students, nGroups);
+            groupData = [];
+            buildSkeleton(nGroups, students);
+
+            setTimeout(() => animateCards(groups, students), 100);
+            setTimeout(() => {
+                groups.forEach((grp, i) => {
+                    grp.forEach(stu => {
+                        groupData.push({group: i + 1, id: stu[0], name: stu[1]});
+                    });
+                });
+                document.getElementById('downloadBtn').classList.remove('hidden');
+                document.getElementById('assignBtn').disabled = false;
+                setStatus(`${students.length} students assigned to ${nGroups} teams`);
+            }, 2200);
+        }
+
+        function downloadCSV() {
+            if (!groupData.length) return;
+            const rows = [['Group', 'ID', 'Name'], ...groupData.map(row => [row.group, row.id, row.name])];
+            const csvContent = rows.map(row => row.join(',')).join('\n');
+            const utf8BOM = '\uFEFF';
+            const blob = new Blob([utf8BOM + csvContent], {type: 'text/csv'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'group_assignments.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+            setStatus('CSV downloaded');
+        }
+    </script>
+    <script src="assets/app.js"></script>
+</body>
+</html>
