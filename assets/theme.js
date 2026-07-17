@@ -1,7 +1,7 @@
 /* Shared Tailwind config + light/dark theme handling for all Klass pages.
    Load order: assets/tailwind.js first, then this file (synchronously, in <head>). */
 
-tailwind.config = {
+if (typeof tailwind !== 'undefined') tailwind.config = {
     darkMode: 'class',
     theme: {
         extend: {

@@ -45,6 +45,11 @@
             "name": "Seating Chart",
             "url": "./KSeatingChart.html",
             "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "KTempo Timer",
+            "url": "./KTempo.html",
+            "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
         }
     ]
 }

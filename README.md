@@ -6,6 +6,7 @@ An installable, offline-capable PWA with four classroom tools sharing one design
 - **KAssignTeam** – balanced random team assignment from a list or CSV
 - **KPresenter** – team → member roulette for fair presentation rotation
 - **KSeatingChart** – randomized seating charts that maximize spacing
+- **KTempo** – countdown timer (deadline / quick / presets), clock mode, focus & compact (PiP) modes, time's-up chime
 
 All dependencies (Tailwind, Font Awesome, Inter font) are vendored under `assets/` — no CDN, fully offline after first visit.
 

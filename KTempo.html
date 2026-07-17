@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>KTempo Timer – Klass</title>
+  <meta name="description" content="Professional countdown timer for classroom activities." />
+  <meta name="theme-color" content="#4f46e5" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="icons/favicon-64.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="stylesheet" href="assets/fonts/inter.css" />
+  <link rel="stylesheet" href="assets/fontawesome/css/all.min.css" />
+  <link rel="stylesheet" href="assets/klass.css" />
+  <link rel="stylesheet" href="assets/ktempo/ktempo.css" />
+  <script src="assets/theme.js"></script>
+</head>
+<body>
+  <!-- ═══ TITLE BAR ═══ (Window Controls Overlay safe) -->
+  <header class="titlebar" id="titlebar">
+    <a href="index.html" class="title-home" title="All Klass tools">
+      <span class="k-logo"><i class="fa-solid fa-graduation-cap"></i></span>
+      <span>Klass</span>
+      <span class="app-name">/ KTempo</span>
+    </a>
+    <div class="toolbar">
+      <button class="toolbar-btn toggle" id="chimeBtn" title="Toggle chime" aria-pressed="true">🔔</button>
+      <button class="toolbar-btn" id="themeBtn" title="Toggle theme">🌙</button>
+      <button class="toolbar-btn" id="focusBtn" title="Focus mode (F11)">⛶</button>
+      <button class="toolbar-btn" id="compactBtn" title="Compact mode (F9)">⧉</button>
+      <button class="toolbar-btn" id="sidebarBtn" title="Toggle sidebar">☰</button>
+    </div>
+  </header>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <main class="content">
+    <!-- Timer stage -->
+    <section class="stage" id="stage">
+      <div class="timer-card" id="timerCard">
+        <div class="timer-viewbox">
+          <div class="timer-line" id="timerLine">
+            <svg class="alarm-icon" id="alarmIcon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 5.72l-4.6-3.86-1.29 1.53 4.6 3.86L22 5.72zM7.88 3.39L6.6 1.86 2 5.71l1.29 1.53 4.59-3.85zM12.5 8H11v6l4.75 2.85.75-1.23-4-2.37V8zM12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9c4.97 0 9-4.03 9-9s-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+            </svg>
+            <span class="timer-text" id="timerText">00:00</span>
+          </div>
+        </div>
+        <div class="stage-actions" id="stageActions" hidden>
+          <button class="btn btn-secondary" id="pauseBtn">⏸  Pause</button>
+          <button class="btn btn-danger" id="stopBtn">■  Stop</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Collapsible sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner">
+        <!-- Deadline -->
+        <div class="section">
+          <div class="section-title">⏰&nbsp;&nbsp;Deadline</div>
+          <div class="row center">
+            <input type="text" inputmode="numeric" id="deadlineHour" class="field time" maxlength="2" placeholder="HH" />
+            <span class="colon">:</span>
+            <input type="text" inputmode="numeric" id="deadlineMinute" class="field time" maxlength="2" placeholder="MM" />
+            <button class="btn btn-secondary ampm" id="ampmBtn">AM</button>
+          </div>
+          <div class="row">
+            <button class="btn btn-primary grow" id="startDeadlineBtn">▶  Start</button>
+            <button class="btn btn-secondary square" id="clockBtn" title="Clock mode">🕐</button>
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <!-- Quick Timer -->
+        <div class="section">
+          <div class="section-title">⏳&nbsp;&nbsp;Quick Timer</div>
+          <div class="row">
+            <input type="text" inputmode="numeric" id="quickMinutes" class="field quick" maxlength="3" placeholder="min" value="5" />
+            <span class="unit">min</span>
+            <button class="btn btn-primary" id="quickBtn">▶  Set</button>
+          </div>
+        </div>
+
+        <hr class="divider" />
+
+        <!-- Presets -->
+        <div class="section">
+          <div class="section-title">⚡&nbsp;&nbsp;Presets</div>
+          <div class="presets" id="presets"><!-- filled by app.js --></div>
+        </div>
+
+        <div class="error" id="errorMessage" hidden></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ═══ FOCUS MODE OVERLAY ═══ -->
+  <div class="focus-overlay" id="focusOverlay" hidden>
+    <div class="timer-viewbox focus">
+      <div class="timer-line" id="focusTimerLine">
+        <svg class="alarm-icon" id="focusAlarmIcon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M22 5.72l-4.6-3.86-1.29 1.53 4.6 3.86L22 5.72zM7.88 3.39L6.6 1.86 2 5.71l1.29 1.53 4.59-3.85zM12.5 8H11v6l4.75 2.85.75-1.23-4-2.37V8zM12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9c4.97 0 9-4.03 9-9s-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z" />
+        </svg>
+        <span class="timer-text" id="focusTimerText">00:00</span>
+      </div>
+    </div>
+    <button class="btn btn-secondary exit-focus" id="exitFocusBtn">✕ Exit Focus</button>
+    <div class="focus-actions" id="focusActions" hidden>
+      <button class="btn btn-secondary" id="focusPauseBtn">⏸  Pause</button>
+      <button class="btn btn-danger" id="focusStopBtn">■  Stop</button>
+    </div>
+  </div>
+
+  <!-- Template moved into the Document-PiP window (or shown as an in-page overlay fallback) -->
+  <template id="compactTemplate">
+    <div class="compact-root" id="compactRoot">
+      <div class="timer-line compact" id="compactTimerLine">
+        <span class="timer-text" id="compactTimerText">00:00</span>
+      </div>
+      <button class="compact-close" id="compactCloseBtn" title="Exit compact">✕</button>
+    </div>
+  </template>
+
+  <script type="module" src="assets/ktempo/app.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
