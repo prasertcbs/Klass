@@ -112,6 +112,7 @@ function buildPresets() {
     b.textContent = p.label;
     b.addEventListener("click", () => {
       chime.unlock();
+      chime.dismiss();
       engine.startPreset(p.seconds);
     });
     frag.appendChild(b);
@@ -182,18 +183,23 @@ engine.addEventListener("change", (e) => {
 });
 
 // ── Commands ─────────────────────────────────────────────────────────────
+// Starting a new timer or stopping/resetting must also silence a ringing
+// chime — the ramp loop otherwise keeps replaying (and once the state leaves
+// Expired, Esc no longer dismisses it).
 els.startDeadlineBtn.addEventListener("click", () => {
   chime.unlock();
+  chime.dismiss();
   if (engine.startDeadline(els.deadlineHour.value, els.deadlineMinute.value, ampm)) saveSettings();
 });
 els.quickBtn.addEventListener("click", () => {
   chime.unlock();
+  chime.dismiss();
   if (engine.startQuickTimer(els.quickMinutes.value)) saveSettings();
 });
 els.pauseBtn.addEventListener("click", () => engine.pauseResume());
 els.focusPauseBtn.addEventListener("click", () => engine.pauseResume());
-els.stopBtn.addEventListener("click", () => engine.stopReset());
-els.focusStopBtn.addEventListener("click", () => engine.stopReset());
+els.stopBtn.addEventListener("click", () => { chime.dismiss(); engine.stopReset(); });
+els.focusStopBtn.addEventListener("click", () => { chime.dismiss(); engine.stopReset(); });
 els.clockBtn.addEventListener("click", () => { chime.unlock(); engine.toggleClock(); });
 els.ampmBtn.addEventListener("click", () => {
   ampm = ampm === "AM" ? "PM" : "AM";
@@ -389,3 +395,6 @@ applySidebar();
 els.chimeBtn.setAttribute("aria-pressed", String(chime.enabled));
 els.chimeBtn.textContent = chime.enabled ? "🔔" : "🔕";
 render();
+
+// Debug/test hook.
+window.ktempo = { engine, chime };

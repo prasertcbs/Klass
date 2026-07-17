@@ -1,7 +1,7 @@
 /* Klass service worker — precaches the whole app for offline use.
    Bump CACHE_VERSION whenever any file changes so installed clients update. */
 
-const CACHE_VERSION = 'klass-v5';
+const CACHE_VERSION = 'klass-v6';
 
 const PRECACHE = [
     './',
