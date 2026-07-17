@@ -31,12 +31,53 @@
             100% { transform: rotateX(0deg); opacity: 1; }
         }
         .winner {
-            animation: pop 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+            animation:
+                pop 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+                pulse 0.5s ease-in-out 0.6s infinite alternate;
         }
         @keyframes pop {
             0% { transform: scale(0.9); }
             55% { transform: scale(1.08); }
             100% { transform: scale(1); }
+        }
+        @keyframes pulse {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(1.08); opacity: 0.75; }
+        }
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        .focus-overlay .stage-text { font-size: clamp(3.5rem, 16vw, 14rem); }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .exit-focus {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            opacity: 0.5;
+        }
+        .exit-focus:hover { opacity: 1; }
+        .focus-actions {
+            position: absolute;
+            bottom: 40px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay { animation: none; }
+            .winner { animation: none; }
         }
     </style>
 </head>
@@ -147,6 +188,16 @@ six</textarea>
         </div>
     </footer>
 
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div id="focusText" class="stage-text t-accent text-center px-4">Ready</div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+        <div class="focus-actions">
+            <button id="focusStopBtn" class="k-btn k-btn-secondary" hidden>
+                <i class="fa-solid fa-stop"></i>Stop
+            </button>
+        </div>
+    </div>
+
     <script>
         const els = {
             poolTA: document.getElementById('poolTextarea'),
@@ -163,6 +214,10 @@ six</textarea>
             downloadPicked: document.getElementById('downloadPickedBtn'),
             stage: document.getElementById('stageText'),
             stageBox: document.getElementById('stageBox'),
+            focusOverlay: document.getElementById('focusOverlay'),
+            focusText: document.getElementById('focusText'),
+            exitFocus: document.getElementById('exitFocusBtn'),
+            focusStop: document.getElementById('focusStopBtn'),
             status: document.getElementById('statusBar'),
             poolCount: document.getElementById('poolCount'),
             pickedCount: document.getElementById('pickedCount'),
@@ -238,6 +293,7 @@ six</textarea>
             els.pickedCount.textContent = state.picked.length;
             els.start.disabled = state.spinning || state.pool.length === 0;
             els.stop.disabled = !state.spinning;
+            els.focusStop.hidden = !state.spinning;
             els.undo.disabled = !state.lastRemoved || state.spinning;
         }
 
@@ -246,11 +302,20 @@ six</textarea>
         }
 
         function renderStage(text, winner = false) {
-            els.stage.textContent = text || '—';
-            els.stage.classList.remove('flip', 'winner');
-            void els.stage.offsetWidth;
-            els.stage.classList.add(winner ? 'winner' : 'flip');
-            els.stageBox.classList.toggle('k-stage-win', winner);
+            for (const el of [els.stage, els.focusText]) {
+                el.textContent = text || '—';
+                el.classList.remove('flip', 'winner');
+                void el.offsetWidth;
+                el.classList.add(winner ? 'winner' : 'flip');
+            }
+        }
+
+        function enterFocus() {
+            els.focusOverlay.hidden = false;
+        }
+
+        function exitFocus() {
+            els.focusOverlay.hidden = true;
         }
 
         function startSpin() {
@@ -264,6 +329,7 @@ six</textarea>
             state.spinning = true;
             updateCounts();
             toggleEditing(false);
+            enterFocus();
             setStatus('Spinning...');
 
             state.intervalId = setInterval(() => {
@@ -375,6 +441,8 @@ six</textarea>
 
         els.start.addEventListener('click', startSpin);
         els.stop.addEventListener('click', stopSpin);
+        els.exitFocus.addEventListener('click', exitFocus);
+        els.focusStop.addEventListener('click', stopSpin);
         els.shuffle.addEventListener('click', shufflePool);
         els.undo.addEventListener('click', undoLast);
         els.reset.addEventListener('click', resetAll);
@@ -393,6 +461,10 @@ six</textarea>
         });
 
         document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !els.focusOverlay.hidden) {
+                exitFocus();
+                return;
+            }
             const active = document.activeElement;
             const typing = active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT');
             if (typing) return;
