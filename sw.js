@@ -1,7 +1,7 @@
 /* Klass service worker — precaches the whole app for offline use.
    Bump CACHE_VERSION whenever any file changes so installed clients update. */
 
-const CACHE_VERSION = 'klass-v12';
+const CACHE_VERSION = 'klass-v13';
 
 const PRECACHE = [
     './',
@@ -32,6 +32,7 @@ const PRECACHE = [
     './assets/fontawesome/css/all.min.css',
     './assets/fontawesome/webfonts/fa-solid-900.woff2',
     './assets/fontawesome/webfonts/fa-solid-900.ttf',
+    './icons/icon.svg',
     './icons/icon-192.png',
     './icons/icon-512.png',
     './icons/icon-maskable-512.png',
