@@ -573,6 +573,14 @@
            settling. Here it is still visibly turning at three-quarters through. */
         const spinEase = (p) => p * (2 - p);
 
+        /* Peak speed is (2 × turns ÷ duration) under this curve, against
+           (4 × turns ÷ duration) under the quartic it replaced — so the same
+           rotation would have launched at half the old speed. Doubling the
+           range restores the original punch off the line while keeping the
+           long, settling tail. */
+        const SPIN_TURNS_MIN = 10;
+        const SPIN_TURNS_MAX = 20;
+
         // Matched by name rather than index: the list may have been shuffled or
         // hand-edited between the two spins.
         function applyPendingRemoval() {
@@ -612,7 +620,8 @@
             playTick();
 
             const duration = 4000 + Math.random() * 2000;
-            const totalRotation = (5 + Math.random() * 5) * 2 * Math.PI;
+            const turns = SPIN_TURNS_MIN + Math.random() * (SPIN_TURNS_MAX - SPIN_TURNS_MIN);
+            const totalRotation = turns * 2 * Math.PI;
             const startRotation = currentRotation;
             const startTime = performance.now();
 
