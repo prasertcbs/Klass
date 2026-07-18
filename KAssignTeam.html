@@ -38,6 +38,61 @@
             border-color: var(--grp-border);
         }
 
+        /* Projector focus mode (same overlay pattern as KPresenter/KRandom/KTempo).
+           #result is reparented into .focus-content while the overlay is open, so
+           these rules scale the very same nodes the assignment animation drives. */
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .focus-content {
+            width: min(1600px, 94vw);
+            max-height: calc(100vh - 160px);
+            overflow-y: auto;
+        }
+        .focus-content #result {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1rem;
+            align-content: start;
+        }
+        .focus-content #result > * { margin-top: 0; } /* neutralize space-y-4 */
+        .focus-content .group-title { font-size: clamp(1.25rem, 2vw, 1.75rem) !important; }
+        .focus-content .name-card {
+            font-size: clamp(1rem, 1.5vw, 1.375rem);
+            padding: 0.625rem 1.125rem;
+        }
+        .exit-focus {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            opacity: 0.5;
+        }
+        .exit-focus:hover { opacity: 1; }
+        .focus-actions {
+            position: absolute;
+            bottom: 40px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay { animation: none; }
+        }
+
         /* 10 cycling group hues (light / dark), distinct from the page's rose accent */
         .g0 { --grp: #1d4ed8; --grp-soft: rgb(29 78 216 / 0.05);   --grp-border: rgb(29 78 216 / 0.45); }
         .g1 { --grp: #047857; --grp-soft: rgb(4 120 87 / 0.05);    --grp-border: rgb(4 120 87 / 0.45); }
@@ -71,9 +126,14 @@
                 </a>
                 <span class="k-badge">Team Assignment</span>
             </div>
-            <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
-                <i class="fa-solid fa-moon"></i>
-            </button>
+            <div class="flex items-center gap-2">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode" title="Focus mode">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -148,6 +208,17 @@
             <span>&copy; 2025 <a href="https://github.com/prasertcbs" target="_blank" rel="noopener" class="t-accent hover:underline">Prasert Kanawattanachai</a> &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
         </div>
     </footer>
+
+    <!-- Projector focus mode: #result is moved in here while open -->
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div id="focusContent" class="focus-content"></div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+        <div class="focus-actions">
+            <button id="focusAssignBtn" class="k-btn k-btn-primary" onclick="randomizeGroups()">
+                <i class="fa-solid fa-shuffle"></i>Assign Groups
+            </button>
+        </div>
+    </div>
 
     <script>
         let groups = [];
@@ -255,6 +326,11 @@
             document.getElementById('statusBar').textContent = msg;
         }
 
+        function setAssignDisabled(disabled) {
+            document.getElementById('assignBtn').disabled = disabled;
+            document.getElementById('focusAssignBtn').disabled = disabled;
+        }
+
         function randomizeGroups() {
             students = parseInput();
             const nGroups = parseInt(document.getElementById('groupCount').value, 10);
@@ -275,7 +351,7 @@
                 return;
             }
 
-            document.getElementById('assignBtn').disabled = true;
+            setAssignDisabled(true);
             setStatus('Assigning teams...');
 
             students = KlassUtil.shuffle(students);
@@ -291,7 +367,7 @@
                     });
                 });
                 document.getElementById('downloadBtn').classList.remove('hidden');
-                document.getElementById('assignBtn').disabled = false;
+                setAssignDisabled(false);
                 setStatus(`${students.length} students assigned to ${nGroups} teams`);
             }, 2200);
         }
@@ -302,6 +378,27 @@
             KlassUtil.downloadCsv('group_assignments.csv', KlassUtil.toCsv(rows));
             setStatus('CSV downloaded');
         }
+
+        // Focus mode: fixed overlay toggled via [hidden], same pattern as the
+        // other Klass tools. The single #result node is reparented (not cloned)
+        // so the per-card animation intervals keep driving the visible cards
+        // and card-N-N ids stay unique.
+        const focusOverlay = document.getElementById('focusOverlay');
+        const focusContent = document.getElementById('focusContent');
+        const resultCard = document.getElementById('result').parentElement;
+        function enterFocus() {
+            focusContent.appendChild(document.getElementById('result'));
+            focusOverlay.hidden = false;
+        }
+        function exitFocus() {
+            resultCard.appendChild(document.getElementById('result'));
+            focusOverlay.hidden = true;
+        }
+        document.getElementById('focusBtn').onclick = enterFocus;
+        document.getElementById('exitFocusBtn').onclick = exitFocus;
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !focusOverlay.hidden) exitFocus();
+        });
     </script>
     <script src="assets/app.js"></script>
 </body>
