@@ -397,9 +397,9 @@
         const BASE_TITLE = 'Pomodoro Timer – Klass';
 
         const MODES = {
-            work: { label: 'Focus time', cls: 'mode-work', slider: 'workDuration' },
-            break: { label: 'Short break', cls: 'mode-break', slider: 'breakDuration' },
-            long: { label: 'Long break', cls: 'mode-long', slider: 'longDuration' },
+            work: { label: 'Focus time', short: 'focus', cls: 'mode-work', slider: 'workDuration' },
+            break: { label: 'Short break', short: 'break', cls: 'mode-break', slider: 'breakDuration' },
+            long: { label: 'Long break', short: 'long break', cls: 'mode-long', slider: 'longDuration' },
         };
 
         // Injectable clock so tests can advance time; production is Date.now.
@@ -413,6 +413,9 @@
         let tickId = null;
         let completedWork = 0;   // work sessions finished this cycle
         let streak = 0;
+        // Set when a session has run out and the display is holding at 00:00:
+        // the mode the next Start will begin.
+        let pendingMode = null;
 
         /* ---- Stats: date-keyed, so rollover needs no bookkeeping ---------- */
 
@@ -583,6 +586,7 @@
             const wasRunning = running;
             stopTicking();
             running = false;
+            pendingMode = null;
             mode = next;
             sessionMs = durationMs(next);
             remainingMs = sessionMs;
@@ -620,6 +624,8 @@
 
         function start() {
             if (running) return;
+            // Leaving the 00:00 hold: enter the session that was queued up.
+            if (pendingMode) setMode(pendingMode);
             if (remainingMs <= 0) remainingMs = sessionMs;
 
             unlockAudio();
@@ -651,6 +657,13 @@
         // Skip advances the cycle without banking the session — crediting it
         // would let a one-second session count as a full pomodoro.
         function skip() {
+            // Already holding at 00:00 — nothing to skip, just move on.
+            if (pendingMode) {
+                const next = pendingMode;
+                setMode(next);
+                setStatus(`Moved on to the ${MODES[next].short}.`);
+                return;
+            }
             const skipped = MODES[mode].label.toLowerCase();
             complete({ natural: false });
             setStatus(`Skipped the ${skipped}.`);
@@ -688,16 +701,31 @@
                 ? els.autoStartBreaks.checked
                 : els.autoStartWork.checked;
 
-            setMode(nextMode);
-            renderStats();
-
-            if (natural) {
-                setStatus(finishedWork
-                    ? `Session complete — ${MODES[nextMode].label.toLowerCase()} is ready.`
-                    : 'Break over — ready for the next work session.');
+            // Skipping, or auto-starting, moves straight on. Otherwise the
+            // display holds at 00:00 on the session that just ended, so the
+            // room sees it finish instead of the clock snapping to the next
+            // duration; the next Start begins nextMode.
+            if (!natural || autoStart) {
+                setMode(nextMode);
+                renderStats();
+                if (natural) {
+                    setStatus(finishedWork
+                        ? `Session complete — starting the ${MODES[nextMode].short}.`
+                        : `Break over — starting the ${MODES[nextMode].short}.`);
+                    start();
+                }
+                return;
             }
 
-            if (autoStart) start();
+            pendingMode = nextMode;
+            remainingMs = 0;
+            els.startLabel.textContent = `Start ${MODES[nextMode].short}`;
+            renderMode();
+            render();
+            renderStats();
+            setStatus(finishedWork
+                ? `Session complete. Press Start for the ${MODES[nextMode].short}.`
+                : `Break over. Press Start for the ${MODES[nextMode].short}.`);
         }
 
         /* ---- Sound ------------------------------------------------------- */
@@ -806,7 +834,7 @@
         window.kpomodoro = {
             setClock(fn) { now = fn || (() => Date.now()); },
             tick,
-            state: () => ({ mode, running, remainingMs, sessionMs, completedWork, streak }),
+            state: () => ({ mode, pendingMode, running, remainingMs, sessionMs, completedWork, streak }),
             stats: () => stats,
         };
     </script>
