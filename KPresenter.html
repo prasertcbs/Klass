@@ -16,20 +16,70 @@
     <script src="assets/theme.js"></script>
     <script src="assets/klass-util.js"></script>
     <style>
-        .roulette {
-            position: relative;
-            background-color: var(--surface-2);
-            border: 1px solid var(--border);
+        .stage-text {
+            font-size: clamp(1.75rem, 4.5vw, 3.5rem);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+            overflow-wrap: anywhere; /* team/member names are arbitrary CSV strings */
+            max-width: 100%;
         }
-        .roulette.spinning {
+        .stage-box.spinning {
             animation: pulse 0.7s infinite;
             filter: blur(1.5px) brightness(1.05);
         }
-        .roulette.final {
-            background-color: var(--accent-soft);
-            border-color: var(--accent-border);
+        .stage-box.final {
             animation: pop .32s cubic-bezier(.6,0,0,1.4);
             filter: none;
+        }
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .focus-text {
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+            overflow-wrap: anywhere;
+        }
+        .focus-team-text { font-size: clamp(1.75rem, 6vw, 4.5rem); }
+        .focus-member-text { font-size: clamp(3rem, 13vw, 11rem); }
+        /* pulse animates box-shadow, invisible on bare text — blur-only mirror */
+        .focus-text.spinning { filter: blur(2px) brightness(1.05); }
+        .focus-text.final { animation: pop .32s cubic-bezier(.6,0,0,1.4); }
+        .exit-focus {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            opacity: 0.5;
+        }
+        .exit-focus:hover { opacity: 1; }
+        .focus-actions {
+            position: absolute;
+            bottom: 40px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay, .stage-box.spinning, .stage-box.final,
+            .focus-text.spinning, .focus-text.final {
+                animation: none;
+                filter: none;
+            }
         }
         @keyframes pulse {
             0% { box-shadow: 0 0 5px var(--ring); }
@@ -98,9 +148,14 @@
                 </a>
                 <span class="k-badge">Presenter Roulette</span>
             </div>
-            <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
-                <i class="fa-solid fa-moon"></i>
-            </button>
+            <div class="flex items-center gap-2">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode" title="Focus mode">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -109,12 +164,46 @@
         <p class="k-status text-base max-w-xl mx-auto">Randomly pick a team, then a member. Perfect for groups, activities, and fair rotation.</p>
     </header>
 
-    <div class="container mx-auto max-w-6xl px-6 pb-8">
-        <div class="max-w-md mx-auto">
-            <div class="k-card p-6">
-                <label class="k-label block mb-3">
-                    <i class="fa-solid fa-file-csv mr-2 t-accent"></i>Load team CSV/TSV
-                </label>
+    <main class="flex-1 container mx-auto max-w-6xl px-6 pb-16 space-y-6">
+
+        <!-- Hero spin stage -->
+        <section class="grid gap-6 md:grid-cols-2" aria-label="Roulette stage">
+
+            <div class="k-card p-6 flex flex-col">
+                <h2 class="k-card-title mb-4"><i class="fa-solid fa-users"></i>Team</h2>
+                <div id="teamRoulette" class="k-stage stage-box relative overflow-hidden min-h-[140px] md:min-h-[200px] flex items-center justify-center px-4 py-6 mb-4">
+                    <span id="teamRouletteText" class="stage-text t-faint text-center">Load data to begin</span>
+                    <div id="teamProgress" class="progress-bar absolute left-0 top-0 h-1 w-full rounded-full" style="display:none;"></div>
+                </div>
+                <div id="teamsList" class="flex flex-wrap gap-2 mb-4 min-h-[48px]"></div>
+                <button id="spinTeamBtn" class="k-btn k-btn-primary w-full mt-auto">
+                    <i class="fa-solid fa-rotate"></i>Spin Team
+                </button>
+            </div>
+
+            <div class="k-card p-6 flex flex-col">
+                <h2 class="k-card-title mb-4"><i class="fa-solid fa-user"></i>Member</h2>
+                <div id="memberRoulette" class="k-stage stage-box relative overflow-hidden min-h-[140px] md:min-h-[200px] flex items-center justify-center px-4 py-6 mb-4">
+                    <span id="memberRouletteText" class="stage-text t-faint text-center">Pick a team first</span>
+                    <div id="memberProgress" class="progress-bar absolute left-0 top-0 h-1 w-full rounded-full" style="display:none;"></div>
+                </div>
+                <div id="membersList" class="flex flex-wrap gap-2 mb-4 min-h-[48px]"></div>
+                <div class="flex gap-2 mt-auto">
+                    <button id="spinMemberBtn" class="k-btn k-btn-primary flex-1">
+                        <i class="fa-solid fa-rotate"></i>Spin Member
+                    </button>
+                    <button id="resetBtn" class="k-btn k-btn-danger k-btn-icon" aria-label="Reset picks" title="Reset picks">
+                        <i class="fa-solid fa-arrow-rotate-left"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Load data / settings / history -->
+        <section class="grid gap-6 md:grid-cols-2 lg:grid-cols-3 items-start">
+
+            <div class="k-card p-6 min-w-0">
+                <h2 class="k-card-title mb-4"><i class="fa-solid fa-file-csv"></i>Load Data</h2>
                 <div class="flex flex-col gap-3">
                     <input type="file" id="fileInput" accept=".csv,.tsv" class="k-file block w-full text-sm t-muted"/>
                     <textarea id="csvPaste" rows="3" placeholder="Paste CSV/TSV here (team,member)" class="k-input w-full resize-none"></textarea>
@@ -129,40 +218,10 @@
                 </div>
                 <div id="loadStatus" class="k-status mt-3" role="status"></div>
             </div>
-        </div>
-    </div>
 
-    <main class="flex-1 container mx-auto max-w-6xl px-6 pb-16">
-        <div class="grid gap-6 lg:grid-cols-3">
-
-            <div class="k-card p-6">
-                <h2 class="k-card-title mb-4"><i class="fa-solid fa-users"></i>Teams</h2>
-                <div id="teamRoulette" class="roulette rounded-xl h-20 flex items-center justify-center text-2xl font-bold mb-4 overflow-hidden">
-                    <span id="teamRouletteText" class="t-faint">Load data to begin</span>
-                    <div id="teamProgress" class="progress-bar absolute left-0 top-0 h-1 w-full rounded-full" style="display:none;"></div>
-                </div>
-                <div id="teamsList" class="flex flex-wrap gap-2 mb-4 min-h-[48px]"></div>
-                <button id="spinTeamBtn" class="k-btn k-btn-primary w-full">
-                    <i class="fa-solid fa-rotate"></i>Spin Team
-                </button>
-            </div>
-
-            <div class="k-card p-6">
-                <h2 class="k-card-title mb-4"><i class="fa-solid fa-user"></i>Members</h2>
-                <div id="memberRoulette" class="roulette rounded-xl h-20 flex items-center justify-center text-2xl font-bold mb-4 overflow-hidden">
-                    <span id="memberRouletteText" class="t-faint">Pick a team above</span>
-                    <div id="memberProgress" class="progress-bar absolute left-0 top-0 h-1 w-full rounded-full" style="display:none;"></div>
-                </div>
-                <div id="membersList" class="flex flex-wrap gap-2 mb-4 min-h-[48px]"></div>
-                <div class="flex gap-2 mb-4">
-                    <button id="spinMemberBtn" class="k-btn k-btn-primary flex-1">
-                        <i class="fa-solid fa-rotate"></i>Spin Member
-                    </button>
-                    <button id="resetBtn" class="k-btn k-btn-danger k-btn-icon" aria-label="Reset picks" title="Reset picks">
-                        <i class="fa-solid fa-arrow-rotate-left"></i>
-                    </button>
-                </div>
-                <div class="space-y-3 pt-4" style="border-top: 1px solid var(--border);">
+            <div class="k-card p-6 min-w-0">
+                <h2 class="k-card-title mb-4"><i class="fa-solid fa-sliders"></i>Settings</h2>
+                <div class="space-y-3">
                     <div class="flex items-center justify-between">
                         <label class="k-label">Team spin duration</label>
                         <div class="flex items-center gap-2">
@@ -190,7 +249,7 @@
                 </div>
             </div>
 
-            <div class="k-card p-6">
+            <div class="k-card p-6 min-w-0 md:col-span-2 lg:col-span-1">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="k-card-title"><i class="fa-solid fa-clock-rotate-left"></i>History</h2>
                     <button id="exportBtn" class="k-btn k-btn-secondary" style="padding: 0.375rem 0.75rem; font-size: 0.8125rem;">
@@ -211,7 +270,7 @@
                     </table>
                 </div>
             </div>
-        </div>
+        </section>
     </main>
 
     <footer class="k-footer">
@@ -219,7 +278,29 @@
             <span>&copy; 2025 <a href="https://github.com/prasertcbs" target="_blank" rel="noopener" class="t-accent hover:underline">Prasert Kanawattanachai</a> &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
         </div>
     </footer>
-    <div class="toast hidden fixed top-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl font-medium shadow-lg z-50" id="toast" role="alert"></div>
+
+    <!-- Projector focus mode (KRandom/KTempo-style overlay, toggled via [hidden]) -->
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div class="w-full max-w-[92vw] flex flex-col items-center gap-8 text-center">
+            <div class="w-full">
+                <div class="k-label uppercase tracking-wide mb-1">Team</div>
+                <div id="focusTeamText" class="focus-text focus-team-text t-faint">Load data to begin</div>
+                <div id="focusTeamProgress" class="progress-bar h-1 w-full max-w-md mx-auto mt-3 rounded-full" style="display:none;"></div>
+            </div>
+            <div class="w-full">
+                <div class="k-label uppercase tracking-wide mb-1">Member</div>
+                <div id="focusMemberText" class="focus-text focus-member-text t-faint">Pick a team first</div>
+                <div id="focusMemberProgress" class="progress-bar h-1 w-full max-w-md mx-auto mt-3 rounded-full" style="display:none;"></div>
+            </div>
+        </div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+        <div class="focus-actions">
+            <button id="focusSpinTeamBtn" class="k-btn k-btn-primary"><i class="fa-solid fa-rotate"></i>Spin Team</button>
+            <button id="focusSpinMemberBtn" class="k-btn k-btn-primary"><i class="fa-solid fa-rotate"></i>Spin Member</button>
+        </div>
+    </div>
+
+    <div class="toast hidden fixed top-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl font-medium shadow-lg z-[200]" id="toast" role="alert"></div>
 
 <script>
 const SAMPLE_CSV = `team,member
@@ -270,6 +351,7 @@ let state = {
   maxHistory: 30,
   usedMemberIds: new Set(),
   usedTeamIds: new Set(),
+  spinBusy: { team: false, member: false },
 };
 
 function parseCsv(text) {
@@ -361,6 +443,19 @@ window.addEventListener('DOMContentLoaded', ()=>{
     renderTeams(); renderMembers(); renderRoulette(null,'team'); renderRoulette(null,'member');
   };
   document.getElementById('exportBtn').onclick = exportHistory;
+
+  // Focus mode: fixed overlay toggled via [hidden], same pattern as KRandom/KTempo.
+  const focusOverlay = document.getElementById('focusOverlay');
+  const enterFocus = ()=>{ focusOverlay.hidden = false; };
+  const exitFocus = ()=>{ focusOverlay.hidden = true; };
+  document.getElementById('focusBtn').onclick = enterFocus;
+  document.getElementById('exitFocusBtn').onclick = exitFocus;
+  document.getElementById('focusSpinTeamBtn').onclick = ()=>spinRoulette('team');
+  document.getElementById('focusSpinMemberBtn').onclick = ()=>spinRoulette('member');
+  document.addEventListener('keydown', (e)=>{
+    if(e.key==='Escape' && !focusOverlay.hidden) exitFocus();
+  });
+
   restoreSettings();
   loadData(parseCsv(SAMPLE_CSV));
 });
@@ -438,33 +533,48 @@ function renderMembers(){
   });
 }
 
+// Renders one roulette into both the stage card and its focus-overlay mirror.
 function renderRoulette(val, which, progress=1, spinning=false){
-  let txt = document.getElementById(which==='team'?'teamRouletteText':'memberRouletteText');
-  let box = document.getElementById(which==='team'?'teamRoulette':'memberRoulette');
-  let progElm = document.getElementById(which==='team'?'teamProgress':'memberProgress');
+  const isTeam = which==='team';
+  const txt = document.getElementById(isTeam?'teamRouletteText':'memberRouletteText');
+  const box = document.getElementById(isTeam?'teamRoulette':'memberRoulette');
+  const progElm = document.getElementById(isTeam?'teamProgress':'memberProgress');
+  const ftxt = document.getElementById(isTeam?'focusTeamText':'focusMemberText');
+  const fprog = document.getElementById(isTeam?'focusTeamProgress':'focusMemberProgress');
+  const fBase = 'focus-text ' + (isTeam?'focus-team-text':'focus-member-text');
   if(spinning){
     box.classList.add('spinning');
-    box.classList.remove('final');
-    progElm.style.setProperty('--prog', Math.round(progress*100)+'%');
-    progElm.style.display = '';
-    txt.textContent = val;
-    txt.className = 't-accent';
+    box.classList.remove('final','k-stage-win');
+    [progElm,fprog].forEach(p=>{ p.style.setProperty('--prog', Math.round(progress*100)+'%'); p.style.display=''; });
+    txt.textContent = ftxt.textContent = val;
+    txt.className = 'stage-text t-accent text-center';
+    ftxt.className = fBase + ' t-accent spinning';
   } else if(val){
     box.classList.remove('spinning');
-    box.classList.add('final');
-    txt.textContent = val;
-    txt.className = 't-accent';
-    progElm.style.display = 'none';
+    box.classList.add('final','k-stage-win');
+    txt.textContent = ftxt.textContent = val;
+    txt.className = 'stage-text t-accent text-center';
+    ftxt.className = fBase + ' t-accent';
+    void ftxt.offsetWidth; // restart the pop animation when re-finalizing
+    ftxt.classList.add('final');
+    [progElm,fprog].forEach(p=>{ p.style.display='none'; });
   } else {
-    box.classList.remove('spinning', 'final');
-    progElm.style.display = 'none';
-    txt.textContent = which==='team' ? (data.teams.length?'Pick a team or Spin!':'Load data to begin') : (state.selectedTeamId?'Pick member or Spin!':'Pick a team above');
-    txt.className = 't-faint';
+    box.classList.remove('spinning','final','k-stage-win');
+    [progElm,fprog].forEach(p=>{ p.style.display='none'; });
+    const placeholder = isTeam
+      ? (data.teams.length ? 'Pick a team or Spin!' : 'Load data to begin')
+      : (state.selectedTeamId ? 'Pick member or Spin!' : 'Pick a team first');
+    txt.textContent = ftxt.textContent = placeholder;
+    txt.className = 'stage-text t-faint text-center';
+    ftxt.className = fBase + ' t-faint';
   }
 }
 
 function spinRoulette(mode){
   if(!data.teams.length){ showToast('Load a valid CSV first'); return;}
+  // Spin buttons exist in both the stage and the focus overlay; ignore
+  // re-triggers while this roulette is already spinning.
+  if(state.spinBusy[mode]) return;
   if(mode==='team'){
     let validTeams = data.teams.filter(t=>!state.usedTeamIds.has(t.id));
     if(state.avoidRepeatTeam && validTeams.length>1) validTeams = validTeams.filter(t=>t.id!==state.selectedTeamId);
@@ -473,6 +583,7 @@ function spinRoulette(mode){
     let target = validTeams[i];
     let rollMs = state.teamRollDuration*1000, steps=rollMs/55, idx=0;
     state.selectedTeamId = null;
+    state.spinBusy.team = true;
     let spinInterval = setInterval(()=>{
       let fakeIdx = Math.floor(Math.random()*validTeams.length);
       let fakeTeam = validTeams[fakeIdx];
@@ -480,6 +591,7 @@ function spinRoulette(mode){
       idx++;
       if(idx>=steps){
         clearInterval(spinInterval);
+        state.spinBusy.team = false;
         state.selectedTeamId = target.id;
         renderRoulette(target.name, 'team', 1, false);
         renderTeams(); renderMembers();
@@ -498,6 +610,7 @@ function spinRoulette(mode){
     let target = validMembers[i];
     let rollMs = state.memberRollDuration*1000, steps=rollMs/50, idx=0;
     state.selectedMemberId = null;
+    state.spinBusy.member = true;
     let spinInterval = setInterval(()=>{
       let fakeIdx = Math.floor(Math.random()*validMembers.length);
       let fakeName = validMembers[fakeIdx] ? validMembers[fakeIdx].name : "";
@@ -505,6 +618,7 @@ function spinRoulette(mode){
       idx++;
       if(idx>=steps){
         clearInterval(spinInterval);
+        state.spinBusy.member = false;
         state.selectedMemberId = target.id;
         renderRoulette(target.name, 'member', 1, false);
         renderMembers();
