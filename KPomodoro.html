@@ -69,6 +69,11 @@
             width: min(var(--ring-size), 100%);
             aspect-ratio: 1;
             margin-inline: auto;
+            cursor: pointer;
+            /* Double-clicking toggles focus mode; without this it also selects
+               the digits. */
+            user-select: none;
+            -webkit-user-select: none;
         }
         .ring-svg {
             width: 100%;
@@ -198,7 +203,7 @@
                 <span class="k-badge">Pomodoro</span>
             </div>
             <div class="flex items-center gap-2">
-                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode" title="Focus mode">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode (F)" title="Focus mode (F)">
                     <i class="fa-solid fa-expand"></i>
                 </button>
                 <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
@@ -259,7 +264,7 @@
                 </div>
 
                 <div id="statusBar" class="k-status mt-6 pt-4 text-center" style="border-top: 1px solid var(--border);" role="status">
-                    Press Start to begin a focus session. Space starts and pauses.
+                    Press Start to begin a focus session. Space starts and pauses; F or a double-click on the dial opens focus mode.
                 </div>
             </div>
 
@@ -358,6 +363,7 @@
 
         const els = {
             stage: $('timerStage'),
+            ringBox: document.querySelector('.ring-box'),
             ringProgress: $('ringProgress'),
             timeDisplay: $('timeDisplay'),
             modeLabel: $('modeLabel'),
@@ -772,8 +778,18 @@
             els.focusOverlay.hidden = true;
         }
 
+        function toggleFocus() {
+            els.focusOverlay.hidden ? enterFocus() : exitFocus();
+        }
+
         els.focusBtn.addEventListener('click', enterFocus);
         els.exitFocusBtn.addEventListener('click', exitFocus);
+
+        // The dial is the only part of the stage with no interactive children,
+        // so a double-click here can't also land on Start/Pause or a mode tab.
+        // Toggles rather than only entering: the same dial is on screen in both
+        // states (it is reparented, not cloned), per KTempo's timer line.
+        els.ringBox.addEventListener('dblclick', toggleFocus);
 
         /* ---- Wiring ------------------------------------------------------ */
 
@@ -810,6 +826,12 @@
             if (e.code === 'Space') {
                 e.preventDefault();
                 running ? pause() : start();
+                return;
+            }
+            // Modifier check keeps Ctrl/Cmd+F (browser find) working.
+            if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                toggleFocus();
             }
         });
 
