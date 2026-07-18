@@ -1,0 +1,6 @@
+# Editor settings are per-machine, not part of the project
+.vscode/
+
+# OS metadata
+.DS_Store
+Thumbs.db
