@@ -562,6 +562,17 @@
 
         /* ---- Spinning ---------------------------------------------------- */
 
+        /* Constant-friction deceleration, the way a real prize wheel behaves:
+           a steady friction torque bleeds speed off linearly, and integrating
+           that gives this quadratic. Velocity reaches exactly zero at the end,
+           so the wheel coasts to a definite stop.
+
+           The previous quartic ease-out was finishing 94% of the turn by
+           half-time and then creeping — the last tenth of the spin covered a
+           fraction of a degree, which read as the wheel freezing rather than
+           settling. Here it is still visibly turning at three-quarters through. */
+        const spinEase = (p) => p * (2 - p);
+
         // Matched by name rather than index: the list may have been shuffled or
         // hand-edited between the two spins.
         function applyPendingRemoval() {
@@ -607,7 +618,7 @@
 
             function frame(now) {
                 const progress = Math.min((now - startTime) / duration, 1);
-                currentRotation = startRotation + totalRotation * (1 - Math.pow(1 - progress, 4));
+                currentRotation = startRotation + totalRotation * spinEase(progress);
                 drawWheel();
 
                 if (progress < 1) {
@@ -834,6 +845,8 @@
         window.kwheel = {
             labelSize: () => labelSize,
             entryCount: () => entries.length,
+            spinEase,
+            rotation: () => currentRotation,
         };
     </script>
     <script src="assets/app.js"></script>
