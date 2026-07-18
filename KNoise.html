@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en" data-app="knoise">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noise Meter – Klass</title>
+    <meta name="description" content="Monitor classroom noise levels in real time with visual and audible feedback.">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <link rel="stylesheet" href="assets/accents.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <style>
+        /* Three semantic level bands, independent of the page's teal accent —
+           the meter must read green/amber/red no matter what the app accent is.
+           Same local-custom-property approach as KAssignTeam's .g0–.g9 hues. */
+        .bands {
+            --lvl-quiet: #047857;
+            --lvl-quiet-soft: rgb(4 120 87 / 0.10);
+            --lvl-moderate: #b45309;
+            --lvl-moderate-soft: rgb(180 83 9 / 0.10);
+            --lvl-loud: #b91c1c;
+            --lvl-loud-soft: rgb(185 28 28 / 0.10);
+        }
+        html.dark .bands {
+            --lvl-quiet: #34d399;
+            --lvl-quiet-soft: rgb(52 211 153 / 0.12);
+            --lvl-moderate: #fbbf24;
+            --lvl-moderate-soft: rgb(251 191 36 / 0.12);
+            --lvl-loud: #f87171;
+            --lvl-loud-soft: rgb(248 113 113 / 0.12);
+        }
+
+        /* Whichever band the current level falls in; set on #meterStage by JS. */
+        .band-quiet { --band: var(--lvl-quiet); --band-soft: var(--lvl-quiet-soft); }
+        .band-moderate { --band: var(--lvl-moderate); --band-soft: var(--lvl-moderate-soft); }
+        .band-loud { --band: var(--lvl-loud); --band-soft: var(--lvl-loud-soft); }
+        .band-idle { --band: var(--text-faint); --band-soft: transparent; }
+
+        /* ---- Dial ---- */
+        /* Every size derives from --dial-size, so the focus overlay scales the
+           whole stage by overriding that one value. */
+        #meterStage { --dial-size: 12rem; }
+        .dial {
+            width: var(--dial-size);
+            height: var(--dial-size);
+            border: 0.5rem solid var(--band);
+            border-radius: 9999px;
+            background-color: var(--band-soft);
+            transition: border-color 0.2s ease, background-color 0.2s ease;
+        }
+        .dial-number {
+            font-size: calc(var(--dial-size) * 0.3);
+            font-weight: 700;
+            line-height: 1.1;
+            color: var(--band);
+            font-variant-numeric: tabular-nums;
+        }
+        .dial-caption {
+            font-size: calc(var(--dial-size) * 0.075);
+            color: var(--text-faint);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .status-text {
+            font-size: calc(var(--dial-size) * 0.145);
+            font-weight: 700;
+            color: var(--band);
+        }
+
+        /* ---- Band meter ---- */
+        .meter-track {
+            position: relative;
+            height: 3.5rem;
+            border-radius: 0.75rem;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            /* Zone tints follow the sliders; JS keeps --warn-pct/--alert-pct current. */
+            background: linear-gradient(to right,
+                var(--lvl-quiet-soft) 0 var(--warn-pct, 50%),
+                var(--lvl-moderate-soft) var(--warn-pct, 50%) var(--alert-pct, 70%),
+                var(--lvl-loud-soft) var(--alert-pct, 70%) 100%);
+        }
+        .meter-fill {
+            position: absolute;
+            inset: 0 auto 0 0;
+            background-color: var(--band);
+            opacity: 0.85;
+            transition: width 0.05s ease-out, background-color 0.2s ease;
+        }
+        .meter-mark {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            transition: left 0.15s ease;
+        }
+        .meter-mark.warn { background-color: var(--lvl-moderate); }
+        .meter-mark.alert { background-color: var(--lvl-loud); }
+        /* A legend below the track rather than labels inside it: the zone
+           boundaries move with the sliders, so in-track text would drift away
+           from the zone it names (and collide once two thresholds sit close). */
+        .meter-legend {
+            display: flex;
+            justify-content: center;
+            gap: 1.25rem;
+            margin-top: 0.625rem;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            color: var(--text-faint);
+        }
+        .meter-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+        }
+        .meter-legend span::before {
+            content: "";
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 9999px;
+            background-color: currentColor;
+        }
+
+        /* ---- History strip ---- */
+        .history {
+            height: 5rem;
+            border-radius: 0.75rem;
+            background-color: var(--surface-2);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: flex-end;
+            gap: 1px;
+            padding: 0.25rem;
+            overflow: hidden;
+        }
+        .history-bar {
+            flex: 1;
+            min-width: 1px;
+            border-radius: 1px;
+        }
+
+        /* ---- Alerts ---- */
+        @keyframes pulse-alert {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+        }
+        .alert-pulse { animation: pulse-alert 0.6s ease-in-out infinite; }
+
+        @keyframes glow-alert {
+            0%, 100% { box-shadow: 0 0 0 0 transparent; }
+            50% { box-shadow: 0 0 2.5rem 0 var(--band); }
+        }
+        .alert-glow { animation: glow-alert 1s ease-in-out infinite; }
+
+        /* Screen flash lives on its own overlay so it never fights the theme
+           tokens on <body>, and is driven on the same cooldown as the beep. */
+        #flashOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            pointer-events: none;
+            background-color: var(--lvl-loud);
+            opacity: 0;
+            transition: opacity 0.18s ease;
+        }
+        #flashOverlay.on { opacity: 0.18; }
+
+        /* ---- Projector focus mode (same overlay pattern as the other tools) ---- */
+        /* #meterStage is reparented into .focus-content while open, so the live
+           meter keeps updating the very same nodes. */
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .focus-content {
+            width: min(1400px, 92vw);
+        }
+        .focus-content #meterStage { --dial-size: min(46vmin, 26rem); }
+        .focus-content .meter-track { height: 5rem; }
+        .exit-focus {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            opacity: 0.5;
+        }
+        .exit-focus:hover { opacity: 1; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay { animation: none; }
+            .alert-pulse, .alert-glow { animation: none; }
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col bands">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="flex items-center gap-3">
+                    <img class="k-logo" src="icons/icon.svg" alt="">
+                    <span class="text-lg font-bold">Klass</span>
+                </a>
+                <span class="k-badge">Noise Meter</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode" title="Focus mode">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Noise Meter</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Monitor classroom noise in real time, with a warning band and an alert you can see and hear.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+
+            <div class="k-card p-6">
+                <div id="meterStage" class="band-idle">
+                    <div class="flex flex-col items-center gap-4">
+                        <div id="dial" class="dial flex items-center justify-center">
+                            <div class="text-center">
+                                <div id="levelNumber" class="dial-number">--</div>
+                                <div class="dial-caption">Level</div>
+                            </div>
+                        </div>
+                        <div id="statusText" class="status-text">Not listening</div>
+                    </div>
+
+                    <div class="meter-track mt-6" id="meterTrack">
+                        <div id="meterFill" class="meter-fill" style="width: 0%"></div>
+                        <div id="warnMark" class="meter-mark warn" style="left: 50%"></div>
+                        <div id="alertMark" class="meter-mark alert" style="left: 70%"></div>
+                    </div>
+                    <div class="meter-legend">
+                        <span style="color: var(--lvl-quiet)">QUIET</span>
+                        <span style="color: var(--lvl-moderate)">MODERATE</span>
+                        <span style="color: var(--lvl-loud)">LOUD</span>
+                    </div>
+
+                    <div class="flex justify-center gap-3 mt-6">
+                        <button id="startBtn" class="k-btn k-btn-primary">
+                            <i class="fa-solid fa-microphone"></i>Start listening
+                        </button>
+                        <button id="stopBtn" class="k-btn k-btn-danger hidden">
+                            <i class="fa-solid fa-stop"></i>Stop
+                        </button>
+                    </div>
+                </div>
+
+                <div id="statusBar" class="k-status mt-6 pt-4 text-center" style="border-top: 1px solid var(--border);" role="status">
+                    Press Start and allow microphone access to begin. Audio is analysed in your browser and never leaves this device.
+                </div>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="k-card p-6">
+                    <h2 class="k-card-title mb-5"><i class="fa-solid fa-sliders"></i>Thresholds</h2>
+
+                    <div class="space-y-5">
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="warnThreshold" class="k-label">Warning level</label>
+                                <span id="warnValue" class="text-sm font-bold" style="color: var(--lvl-moderate)">50</span>
+                            </div>
+                            <input type="range" id="warnThreshold" min="10" max="95" value="50" class="k-range w-full">
+                            <div class="flex justify-between text-xs t-faint mt-1"><span>10</span><span>95</span></div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="alertThreshold" class="k-label">Alert level</label>
+                                <span id="alertValue" class="text-sm font-bold" style="color: var(--lvl-loud)">70</span>
+                            </div>
+                            <input type="range" id="alertThreshold" min="10" max="95" value="70" class="k-range w-full">
+                            <div class="flex justify-between text-xs t-faint mt-1"><span>10</span><span>95</span></div>
+                        </div>
+
+                        <div class="pt-4 space-y-3" style="border-top: 1px solid var(--border);">
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="soundAlert" checked class="k-check">
+                                <i class="fa-solid fa-bell t-faint"></i>
+                                Play a beep when the alert level is crossed
+                            </label>
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="visualAlert" checked class="k-check">
+                                <i class="fa-solid fa-eye t-faint"></i>
+                                Flash the screen on alert
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="k-card p-6">
+                    <h2 class="k-card-title mb-5"><i class="fa-solid fa-chart-line"></i>Session statistics</h2>
+
+                    <div class="grid grid-cols-2 gap-3 mb-5">
+                        <div class="k-stage p-4 text-center">
+                            <div id="minLevel" class="text-2xl font-bold" style="color: var(--lvl-quiet)">--</div>
+                            <div class="text-xs t-faint">Minimum</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="maxLevel" class="text-2xl font-bold" style="color: var(--lvl-loud)">--</div>
+                            <div class="text-xs t-faint">Maximum</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="avgLevel" class="text-2xl font-bold" style="color: var(--lvl-moderate)">--</div>
+                            <div class="text-xs t-faint">Average</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="currentLevel" class="text-2xl font-bold t-accent">--</div>
+                            <div class="text-xs t-faint">Current</div>
+                        </div>
+                    </div>
+
+                    <div class="pt-4" style="border-top: 1px solid var(--border);">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="k-label">Recent history</span>
+                            <button id="resetStats" class="k-btn k-btn-secondary text-xs" style="padding: 0.375rem 0.625rem;">
+                                <i class="fa-solid fa-rotate-left"></i>Reset
+                            </button>
+                        </div>
+                        <div id="history" class="history"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="k-card p-6">
+                <h2 class="k-card-title mb-2"><i class="fa-solid fa-circle-info"></i>Level guide</h2>
+                <p class="k-status mb-5">These are <strong>relative</strong> microphone levels on a 0–100 scale, not calibrated decibels. Readings depend on your microphone and where the device sits, so set the thresholds by ear for your own room.</p>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="k-stage p-4 text-center" style="border-color: var(--lvl-quiet); background-color: var(--lvl-quiet-soft);">
+                        <div class="text-lg font-bold mb-1" style="color: var(--lvl-quiet)">0–25</div>
+                        <div class="text-xs t-muted">Near silent</div>
+                    </div>
+                    <div class="k-stage p-4 text-center" style="border-color: var(--lvl-quiet); background-color: var(--lvl-quiet-soft);">
+                        <div class="text-lg font-bold mb-1" style="color: var(--lvl-quiet)">25–45</div>
+                        <div class="text-xs t-muted">Quiet individual work</div>
+                    </div>
+                    <div class="k-stage p-4 text-center" style="border-color: var(--lvl-moderate); background-color: var(--lvl-moderate-soft);">
+                        <div class="text-lg font-bold mb-1" style="color: var(--lvl-moderate)">45–70</div>
+                        <div class="text-xs t-muted">Group discussion</div>
+                    </div>
+                    <div class="k-stage p-4 text-center" style="border-color: var(--lvl-loud); background-color: var(--lvl-loud-soft);">
+                        <div class="text-lg font-bold mb-1" style="color: var(--lvl-loud)">70+</div>
+                        <div class="text-xs t-muted">Too loud to teach over</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 <a href="https://github.com/prasertcbs" target="_blank" rel="noopener" class="t-accent hover:underline">Prasert Kanawattanachai</a> &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <div id="flashOverlay" aria-hidden="true"></div>
+
+    <!-- Projector focus mode: #meterStage is moved in here while open -->
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div id="focusContent" class="focus-content"></div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+
+        const els = {
+            stage: $('meterStage'),
+            dial: $('dial'),
+            levelNumber: $('levelNumber'),
+            statusText: $('statusText'),
+            meterTrack: $('meterTrack'),
+            meterFill: $('meterFill'),
+            warnMark: $('warnMark'),
+            alertMark: $('alertMark'),
+            startBtn: $('startBtn'),
+            stopBtn: $('stopBtn'),
+            statusBar: $('statusBar'),
+            warnThreshold: $('warnThreshold'),
+            alertThreshold: $('alertThreshold'),
+            warnValue: $('warnValue'),
+            alertValue: $('alertValue'),
+            soundAlert: $('soundAlert'),
+            visualAlert: $('visualAlert'),
+            minLevel: $('minLevel'),
+            maxLevel: $('maxLevel'),
+            avgLevel: $('avgLevel'),
+            currentLevel: $('currentLevel'),
+            history: $('history'),
+            resetStats: $('resetStats'),
+            flashOverlay: $('flashOverlay'),
+            focusBtn: $('focusBtn'),
+            focusOverlay: $('focusOverlay'),
+            focusContent: $('focusContent'),
+            exitFocusBtn: $('exitFocusBtn'),
+        };
+
+        const HISTORY_LENGTH = 90;
+        const ALERT_COOLDOWN_MS = 2000;
+
+        let audioCtx = null;
+        let analyser = null;
+        let source = null;
+        let stream = null;          // kept so stop() can actually release the mic
+        let frequencyData = null;
+        let animationId = null;
+        let isRunning = false;
+        let lastAlertTime = 0;
+
+        let history = [];
+        let minLevel = Infinity;
+        let maxLevel = -Infinity;
+        let totalLevel = 0;
+        let sampleCount = 0;
+
+        /* ---- Settings ---- */
+
+        const STORAGE_KEY = 'knoise.settings.v1';
+
+        function saveSettings() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    warn: Number(els.warnThreshold.value),
+                    alert: Number(els.alertThreshold.value),
+                    sound: els.soundAlert.checked,
+                    flash: els.visualAlert.checked,
+                }));
+            } catch { /* storage may be unavailable; settings are non-essential */ }
+        }
+
+        function restoreSettings() {
+            let saved = {};
+            try {
+                saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            } catch { /* ignore malformed state */ }
+
+            if (Number.isFinite(saved.warn)) els.warnThreshold.value = saved.warn;
+            if (Number.isFinite(saved.alert)) els.alertThreshold.value = saved.alert;
+            if (typeof saved.sound === 'boolean') els.soundAlert.checked = saved.sound;
+            if (typeof saved.flash === 'boolean') els.visualAlert.checked = saved.flash;
+        }
+
+        /* ---- Thresholds ---- */
+
+        // The sliders share the meter's 0–100 scale, so a threshold value maps
+        // straight onto a percentage position along the track.
+        function syncThresholds() {
+            const warn = Number(els.warnThreshold.value);
+            const alert = Number(els.alertThreshold.value);
+            els.warnValue.textContent = warn;
+            els.alertValue.textContent = alert;
+            els.warnMark.style.left = `${warn}%`;
+            els.alertMark.style.left = `${alert}%`;
+            els.meterTrack.style.setProperty('--warn-pct', `${warn}%`);
+            els.meterTrack.style.setProperty('--alert-pct', `${alert}%`);
+        }
+
+        // The alert level must stay above the warning level; nudge whichever
+        // slider the user is not currently dragging.
+        els.warnThreshold.addEventListener('input', () => {
+            if (Number(els.warnThreshold.value) >= Number(els.alertThreshold.value)) {
+                els.alertThreshold.value = Math.min(
+                    Number(els.alertThreshold.max),
+                    Number(els.warnThreshold.value) + 5
+                );
+            }
+            syncThresholds();
+            saveSettings();
+        });
+
+        els.alertThreshold.addEventListener('input', () => {
+            if (Number(els.alertThreshold.value) <= Number(els.warnThreshold.value)) {
+                els.warnThreshold.value = Math.max(
+                    Number(els.warnThreshold.min),
+                    Number(els.alertThreshold.value) - 5
+                );
+            }
+            syncThresholds();
+            saveSettings();
+        });
+
+        els.soundAlert.addEventListener('change', saveSettings);
+        els.visualAlert.addEventListener('change', saveSettings);
+
+        /* ---- Capture ---- */
+
+        function setStatus(message) {
+            els.statusBar.textContent = message;
+        }
+
+        function setBand(band) {
+            els.stage.className = `band-${band}`;
+        }
+
+        async function start() {
+            if (isRunning) return;
+            setStatus('Requesting microphone access…');
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (err) {
+                console.error('Microphone access denied:', err);
+                setStatus('Microphone access was blocked. Allow it in your browser’s site settings, then press Start again.');
+                return;
+            }
+
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            // Created inside the click handler so autoplay policy lets it run;
+            // some browsers still hand it back suspended.
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.3;
+            frequencyData = new Uint8Array(analyser.frequencyBinCount);
+
+            source = audioCtx.createMediaStreamSource(stream);
+            source.connect(analyser);
+
+            isRunning = true;
+            els.startBtn.classList.add('hidden');
+            els.stopBtn.classList.remove('hidden');
+            setStatus('Listening. Press Stop to release the microphone.');
+
+            resetStats();
+            analyze();
+        }
+
+        function stop() {
+            isRunning = false;
+
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            if (source) {
+                source.disconnect();
+                source = null;
+            }
+            // The MediaStream — not the source node — owns the tracks, so this is
+            // what actually turns off the browser's recording indicator.
+            if (stream) {
+                stream.getTracks().forEach((track) => track.stop());
+                stream = null;
+            }
+            if (audioCtx) {
+                audioCtx.close();
+                audioCtx = null;
+            }
+            analyser = null;
+
+            els.startBtn.classList.remove('hidden');
+            els.stopBtn.classList.add('hidden');
+            els.levelNumber.textContent = '--';
+            els.currentLevel.textContent = '--';
+            els.statusText.textContent = 'Not listening';
+            els.statusText.classList.remove('alert-pulse');
+            els.dial.classList.remove('alert-glow');
+            els.meterFill.style.width = '0%';
+            setBand('idle');
+            setStatus('Stopped. The microphone has been released.');
+        }
+
+        function analyze() {
+            if (!isRunning) return;
+
+            analyser.getByteFrequencyData(frequencyData);
+
+            let sum = 0;
+            for (let i = 0; i < frequencyData.length; i++) sum += frequencyData[i];
+            const average = sum / frequencyData.length;
+
+            // Relative 0–100 level, not calibrated dB SPL — see the level guide.
+            const level = Math.min(100, Math.max(0, Math.round((average / 255) * 100 + 20)));
+
+            updateDisplay(level);
+            updateStats(level);
+            updateHistory(level);
+
+            animationId = requestAnimationFrame(analyze);
+        }
+
+        function bandFor(level) {
+            if (level >= Number(els.alertThreshold.value)) return 'loud';
+            if (level >= Number(els.warnThreshold.value)) return 'moderate';
+            return 'quiet';
+        }
+
+        function updateDisplay(level) {
+            els.levelNumber.textContent = level;
+            els.currentLevel.textContent = level;
+            els.meterFill.style.width = `${level}%`;
+
+            const band = bandFor(level);
+            setBand(band);
+
+            if (band === 'loud') {
+                els.statusText.textContent = 'Too loud';
+                els.statusText.classList.add('alert-pulse');
+                els.dial.classList.add('alert-glow');
+
+                // Both alerts share one cooldown, so neither the beep nor the
+                // flash can fire on every animation frame.
+                if (Date.now() - lastAlertTime > ALERT_COOLDOWN_MS) {
+                    lastAlertTime = Date.now();
+                    if (els.soundAlert.checked) playAlert();
+                    if (els.visualAlert.checked) flashScreen();
+                }
+            } else {
+                els.statusText.textContent = band === 'moderate' ? 'Getting loud' : 'Quiet';
+                els.statusText.classList.remove('alert-pulse');
+                els.dial.classList.remove('alert-glow');
+            }
+        }
+
+        function updateStats(level) {
+            if (level < minLevel) {
+                minLevel = level;
+                els.minLevel.textContent = level;
+            }
+            if (level > maxLevel) {
+                maxLevel = level;
+                els.maxLevel.textContent = level;
+            }
+            totalLevel += level;
+            sampleCount++;
+            els.avgLevel.textContent = Math.round(totalLevel / sampleCount);
+        }
+
+        function updateHistory(level) {
+            history.push(level);
+            if (history.length > HISTORY_LENGTH) history.shift();
+
+            // Opacity is an inline style, not a Tailwind class — utility classes
+            // built from a runtime value are never generated by the compiler.
+            els.history.innerHTML = history
+                .map((value, i) => {
+                    const height = Math.max(4, value);
+                    const opacity = (0.35 + (i / history.length) * 0.65).toFixed(2);
+                    const color = `var(--lvl-${bandFor(value)})`;
+                    return `<div class="history-bar" style="height:${height}%;opacity:${opacity};background-color:${color}"></div>`;
+                })
+                .join('');
+        }
+
+        function resetStats() {
+            history = [];
+            minLevel = Infinity;
+            maxLevel = -Infinity;
+            totalLevel = 0;
+            sampleCount = 0;
+
+            els.minLevel.textContent = '--';
+            els.maxLevel.textContent = '--';
+            els.avgLevel.textContent = '--';
+            els.history.innerHTML = '';
+        }
+
+        /* ---- Alerts ---- */
+
+        let flashTimer = null;
+
+        function flashScreen() {
+            els.flashOverlay.classList.add('on');
+            clearTimeout(flashTimer);
+            flashTimer = setTimeout(() => els.flashOverlay.classList.remove('on'), 180);
+        }
+
+        // Two short descending tones. Reuses the live capture context, which is
+        // already unlocked by the Start gesture.
+        function playAlert() {
+            if (!audioCtx) return;
+
+            const beep = (frequency, startOffset) => {
+                const at = audioCtx.currentTime + startOffset;
+                const oscillator = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.value = frequency;
+                // Ramped rather than switched, so the tone doesn't click.
+                gain.gain.setValueAtTime(0.0001, at);
+                gain.gain.exponentialRampToValueAtTime(0.2, at + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.15);
+                oscillator.connect(gain);
+                gain.connect(audioCtx.destination);
+                oscillator.start(at);
+                oscillator.stop(at + 0.16);
+            };
+
+            beep(800, 0);
+            beep(600, 0.2);
+        }
+
+        /* ---- Focus mode ---- */
+
+        // The stage is reparented (not cloned) so the running meter keeps
+        // driving the same nodes, and the Start/Stop buttons come with it.
+        const stageHome = els.stage.parentElement;
+
+        function enterFocus() {
+            els.focusContent.appendChild(els.stage);
+            els.focusOverlay.hidden = false;
+        }
+
+        function exitFocus() {
+            stageHome.insertBefore(els.stage, stageHome.firstChild);
+            els.focusOverlay.hidden = true;
+        }
+
+        els.focusBtn.addEventListener('click', enterFocus);
+        els.exitFocusBtn.addEventListener('click', exitFocus);
+
+        /* ---- Wiring ---- */
+
+        els.startBtn.addEventListener('click', start);
+        els.stopBtn.addEventListener('click', stop);
+        els.resetStats.addEventListener('click', resetStats);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !els.focusOverlay.hidden) {
+                exitFocus();
+                return;
+            }
+            // Don't hijack the spacebar while a slider or field has focus.
+            const active = document.activeElement;
+            if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                isRunning ? stop() : start();
+            }
+        });
+
+        restoreSettings();
+        syncThresholds();
+    </script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

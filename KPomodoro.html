@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en" data-app="kpomodoro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomodoro Timer – Klass</title>
+    <meta name="description" content="Run focused work sessions with timed breaks, session tracking, and daily stats.">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <link rel="stylesheet" href="assets/accents.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <style>
+        /* Work / Break / Long Break colors, independent of the fuchsia accent —
+           the mode must read red/green/blue whatever the app accent is. Same
+           local-custom-property approach as KNoise's level bands. */
+        .modes {
+            --mode-work: #b91c1c;
+            --mode-work-soft: rgb(185 28 28 / 0.10);
+            --mode-break: #047857;
+            --mode-break-soft: rgb(4 120 87 / 0.10);
+            --mode-long: #1d4ed8;
+            --mode-long-soft: rgb(29 78 216 / 0.10);
+        }
+        html.dark .modes {
+            --mode-work: #f87171;
+            --mode-work-soft: rgb(248 113 113 / 0.12);
+            --mode-break: #34d399;
+            --mode-break-soft: rgb(52 211 153 / 0.12);
+            --mode-long: #60a5fa;
+            --mode-long-soft: rgb(96 165 250 / 0.12);
+        }
+
+        /* The active mode, set on #timerStage by JS. */
+        .mode-work { --mode: var(--mode-work); --mode-soft: var(--mode-work-soft); }
+        .mode-break { --mode: var(--mode-break); --mode-soft: var(--mode-break-soft); }
+        .mode-long { --mode: var(--mode-long); --mode-soft: var(--mode-long-soft); }
+
+        /* ---- Mode tabs ---- */
+        /* Static classes only: the previous build interpolated Tailwind class
+           names at runtime, which the compiler never sees. */
+        .mode-tab {
+            padding: 0.5rem 1.25rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-strong);
+            background-color: var(--surface);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.9375rem;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        }
+        .mode-tab:hover { background-color: var(--surface-2); color: var(--text); }
+        .mode-tab.is-active {
+            background-color: var(--mode-soft);
+            border-color: var(--mode);
+            color: var(--mode);
+        }
+
+        /* ---- Timer ring ---- */
+        #timerStage { --ring-size: 18rem; }
+        .ring-box {
+            position: relative;
+            width: min(var(--ring-size), 100%);
+            aspect-ratio: 1;
+            margin-inline: auto;
+        }
+        .ring-svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+        .ring-track { stroke: var(--border); }
+        /* No CSS transition: the tick is sub-second, so a 1s ease would lag
+           behind the value it is animating toward. */
+        .ring-progress { stroke: var(--mode); }
+        .ring-readout {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+        }
+        .ring-time {
+            font-size: calc(var(--ring-size) * 0.2);
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.02em;
+            font-variant-numeric: tabular-nums;
+            color: var(--mode);
+        }
+        .ring-label {
+            font-size: calc(var(--ring-size) * 0.055);
+            color: var(--text-faint);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        /* ---- Session dots ---- */
+        .dot {
+            width: 0.75rem;
+            height: 0.75rem;
+            border-radius: 9999px;
+            background-color: var(--surface-2);
+            border: 1px solid var(--border-strong);
+        }
+        .dot.done {
+            background-color: var(--mode-work);
+            border-color: var(--mode-work);
+        }
+
+        /* ---- Week chart ---- */
+        /* Each day is a full-height track with the count filled in from the
+           bottom, so a day with no sessions still reads as an empty column
+           rather than a stray underline. */
+        .week-col {
+            flex: 1;
+            height: 100%;
+            display: flex;
+            align-items: flex-end;
+            background-color: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 0.25rem;
+            overflow: hidden;
+        }
+        .week-fill {
+            width: 100%;
+            background-color: var(--border-strong);
+        }
+        .week-col.today .week-fill { background-color: var(--accent); }
+
+        /* ---- Projector focus mode (same overlay pattern as the other tools) ---- */
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .focus-content {
+            width: min(1400px, 92vw);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .focus-content #timerStage {
+            --ring-size: min(62vh, 40rem);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 3.5rem 0 1.5rem;
+            max-height: 100vh;
+            /* Without this the column shrink-wraps to its widest child (the tab
+               row), so .ring-box's `min(--ring-size, 100%)` resolves against
+               that instead of the overlay — the ring stays small while the
+               digits, sized from --ring-size, overflow it. */
+            width: 100%;
+        }
+        .focus-content #timerStage > * { margin-top: 0; } /* neutralize mt-* */
+        .exit-focus {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            opacity: 0.5;
+        }
+        .exit-focus:hover { opacity: 1; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay { animation: none; }
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col modes">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="flex items-center gap-3">
+                    <img class="k-logo" src="icons/icon.svg" alt="">
+                    <span class="text-lg font-bold">Klass</span>
+                </a>
+                <span class="k-badge">Pomodoro</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode" title="Focus mode">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Pomodoro Timer</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Work in focused sessions with timed breaks — a steady rhythm for study periods and independent work.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+
+            <div class="k-card p-6">
+                <div id="timerStage" class="mode-work">
+                    <div class="flex justify-center gap-2" role="tablist" aria-label="Session type">
+                        <button class="mode-tab is-active" data-mode="work" role="tab" aria-selected="true">Work</button>
+                        <button class="mode-tab" data-mode="break" role="tab" aria-selected="false">Break</button>
+                        <button class="mode-tab" data-mode="long" role="tab" aria-selected="false">Long Break</button>
+                    </div>
+
+                    <div class="ring-box mt-6">
+                        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">
+                            <circle class="ring-track" cx="50" cy="50" r="45" fill="none" stroke-width="6"/>
+                            <circle id="ringProgress" class="ring-progress" cx="50" cy="50" r="45" fill="none"
+                                    stroke-width="6" stroke-linecap="round" stroke-dasharray="282.74" stroke-dashoffset="0"/>
+                        </svg>
+                        <div class="ring-readout">
+                            <div id="timeDisplay" class="ring-time">25:00</div>
+                            <div id="modeLabel" class="ring-label">Focus time</div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap justify-center gap-2 mt-6">
+                        <button id="startBtn" class="k-btn k-btn-primary">
+                            <i class="fa-solid fa-play"></i><span id="startLabel">Start</span>
+                        </button>
+                        <button id="pauseBtn" class="k-btn k-btn-secondary hidden">
+                            <i class="fa-solid fa-pause"></i>Pause
+                        </button>
+                        <button id="resetBtn" class="k-btn k-btn-secondary">
+                            <i class="fa-solid fa-rotate-left"></i>Reset
+                        </button>
+                        <button id="skipBtn" class="k-btn k-btn-secondary">
+                            <i class="fa-solid fa-forward"></i>Skip
+                        </button>
+                    </div>
+
+                    <div class="flex justify-center items-center gap-3 mt-6">
+                        <span class="k-label">Session</span>
+                        <span id="sessionDots" class="flex gap-1.5"></span>
+                        <span id="sessionCount" class="k-badge">0/4</span>
+                    </div>
+                </div>
+
+                <div id="statusBar" class="k-status mt-6 pt-4 text-center" style="border-top: 1px solid var(--border);" role="status">
+                    Press Start to begin a focus session. Space starts and pauses.
+                </div>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="k-card p-6">
+                    <h2 class="k-card-title mb-5"><i class="fa-solid fa-sliders"></i>Session lengths</h2>
+
+                    <div class="space-y-5">
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="workDuration" class="k-label">Work</label>
+                                <span id="workValue" class="text-sm font-bold" style="color: var(--mode-work)">25 min</span>
+                            </div>
+                            <input type="range" id="workDuration" min="5" max="60" value="25" class="k-range w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="breakDuration" class="k-label">Short break</label>
+                                <span id="breakValue" class="text-sm font-bold" style="color: var(--mode-break)">5 min</span>
+                            </div>
+                            <input type="range" id="breakDuration" min="1" max="15" value="5" class="k-range w-full">
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="longDuration" class="k-label">Long break</label>
+                                <span id="longValue" class="text-sm font-bold" style="color: var(--mode-long)">15 min</span>
+                            </div>
+                            <input type="range" id="longDuration" min="5" max="30" value="15" class="k-range w-full">
+                        </div>
+
+                        <div class="pt-4 space-y-3" style="border-top: 1px solid var(--border);">
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="autoStartBreaks" class="k-check">
+                                Auto-start breaks
+                            </label>
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="autoStartWork" class="k-check">
+                                Auto-start work sessions
+                            </label>
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="soundEnabled" checked class="k-check">
+                                Chime at the end of each session
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="k-card p-6">
+                    <h2 class="k-card-title mb-5"><i class="fa-solid fa-chart-simple"></i>Today</h2>
+
+                    <div class="grid grid-cols-2 gap-3 mb-5">
+                        <div class="k-stage p-4 text-center">
+                            <div id="todayPomodoros" class="text-2xl font-bold t-accent">0</div>
+                            <div class="text-xs t-faint">Pomodoros</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="todayMinutes" class="text-2xl font-bold t-accent">0</div>
+                            <div class="text-xs t-faint">Minutes focused</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="todayStreak" class="text-2xl font-bold t-accent">0</div>
+                            <div class="text-xs t-faint">Streak today</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="bestStreak" class="text-2xl font-bold t-accent">0</div>
+                            <div class="text-xs t-faint">Best streak</div>
+                        </div>
+                    </div>
+
+                    <div class="pt-4" style="border-top: 1px solid var(--border);">
+                        <div class="k-label mb-2">Last 7 days</div>
+                        <div id="weekChart" class="flex items-end justify-between gap-1.5 h-16"></div>
+                        <div id="weekLabels" class="flex justify-between text-xs t-faint mt-1"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 <a href="https://github.com/prasertcbs" target="_blank" rel="noopener" class="t-accent hover:underline">Prasert Kanawattanachai</a> &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <!-- Projector focus mode: #timerStage is moved in here while open -->
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div id="focusContent" class="focus-content"></div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+
+        const els = {
+            stage: $('timerStage'),
+            ringProgress: $('ringProgress'),
+            timeDisplay: $('timeDisplay'),
+            modeLabel: $('modeLabel'),
+            startBtn: $('startBtn'),
+            startLabel: $('startLabel'),
+            pauseBtn: $('pauseBtn'),
+            resetBtn: $('resetBtn'),
+            skipBtn: $('skipBtn'),
+            sessionDots: $('sessionDots'),
+            sessionCount: $('sessionCount'),
+            statusBar: $('statusBar'),
+            workDuration: $('workDuration'),
+            breakDuration: $('breakDuration'),
+            longDuration: $('longDuration'),
+            workValue: $('workValue'),
+            breakValue: $('breakValue'),
+            longValue: $('longValue'),
+            autoStartBreaks: $('autoStartBreaks'),
+            autoStartWork: $('autoStartWork'),
+            soundEnabled: $('soundEnabled'),
+            todayPomodoros: $('todayPomodoros'),
+            todayMinutes: $('todayMinutes'),
+            todayStreak: $('todayStreak'),
+            bestStreak: $('bestStreak'),
+            weekChart: $('weekChart'),
+            weekLabels: $('weekLabels'),
+            focusBtn: $('focusBtn'),
+            focusOverlay: $('focusOverlay'),
+            focusContent: $('focusContent'),
+            exitFocusBtn: $('exitFocusBtn'),
+        };
+
+        const CIRCUMFERENCE = 2 * Math.PI * 45; // r=45 in the SVG viewBox
+        const TICK_MS = 250;
+        const CYCLE_LENGTH = 4;                 // work sessions before a long break
+        const PRUNE_DAYS = 90;
+        const BASE_TITLE = 'Pomodoro Timer – Klass';
+
+        const MODES = {
+            work: { label: 'Focus time', cls: 'mode-work', slider: 'workDuration' },
+            break: { label: 'Short break', cls: 'mode-break', slider: 'breakDuration' },
+            long: { label: 'Long break', cls: 'mode-long', slider: 'longDuration' },
+        };
+
+        // Injectable clock so tests can advance time; production is Date.now.
+        let now = () => Date.now();
+
+        let mode = 'work';
+        let running = false;
+        let endTime = null;      // epoch ms — the single source of truth while running
+        let remainingMs = 0;     // authoritative while paused/idle
+        let sessionMs = 0;       // full length of the current session
+        let tickId = null;
+        let completedWork = 0;   // work sessions finished this cycle
+        let streak = 0;
+
+        /* ---- Stats: date-keyed, so rollover needs no bookkeeping ---------- */
+
+        const STATS_KEY = 'kpomodoro.stats.v1';
+        const SETTINGS_KEY = 'kpomodoro.settings.v1';
+
+        let stats = { days: {}, bestStreak: 0 };
+
+        const isoDay = (date) => {
+            const d = new Date(date);
+            // Local midnight, not UTC — a session at 9pm belongs to that day.
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        };
+
+        function loadStats() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(STATS_KEY) || '{}');
+                // Validate rather than trust: a malformed value used to throw
+                // and take the whole script down with it.
+                stats = {
+                    days: (raw && typeof raw.days === 'object' && raw.days) || {},
+                    bestStreak: Number.isFinite(raw && raw.bestStreak) ? raw.bestStreak : 0,
+                };
+            } catch {
+                stats = { days: {}, bestStreak: 0 };
+            }
+        }
+
+        function saveStats() {
+            try {
+                // Keep the key from growing without bound.
+                const cutoff = isoDay(now() - PRUNE_DAYS * 86400000);
+                Object.keys(stats.days).forEach((day) => {
+                    if (day < cutoff) delete stats.days[day];
+                });
+                localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+            } catch { /* storage may be unavailable; stats are non-essential */ }
+        }
+
+        function todayEntry() {
+            const key = isoDay(now());
+            if (!stats.days[key]) stats.days[key] = { pomodoros: 0, minutes: 0 };
+            return stats.days[key];
+        }
+
+        // The last 7 days are derived from today's date on every read, so gaps
+        // and rollovers are correct by construction.
+        function lastSevenDays() {
+            const out = [];
+            for (let back = 6; back >= 0; back--) {
+                const date = new Date(now() - back * 86400000);
+                const key = isoDay(date);
+                out.push({
+                    key,
+                    isToday: back === 0,
+                    label: date.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 3),
+                    pomodoros: (stats.days[key] && stats.days[key].pomodoros) || 0,
+                });
+            }
+            return out;
+        }
+
+        function renderStats() {
+            const today = todayEntry();
+            els.todayPomodoros.textContent = today.pomodoros;
+            els.todayMinutes.textContent = today.minutes;
+            els.todayStreak.textContent = streak;
+            els.bestStreak.textContent = stats.bestStreak;
+
+            const week = lastSevenDays();
+            const peak = Math.max(1, ...week.map((d) => d.pomodoros));
+            els.weekChart.innerHTML = week
+                .map((d) => {
+                    // A day with sessions always shows a sliver, so "a little"
+                    // never looks identical to "none".
+                    const height = d.pomodoros === 0 ? 0 : Math.max(8, (d.pomodoros / peak) * 100);
+                    return `<div class="week-col${d.isToday ? ' today' : ''}" title="${d.key}: ${d.pomodoros}">` +
+                        `<div class="week-fill" style="height:${height}%"></div></div>`;
+                })
+                .join('');
+            els.weekLabels.innerHTML = week
+                .map((d) => `<span style="flex:1;text-align:center">${d.label}</span>`)
+                .join('');
+        }
+
+        /* ---- Settings ---------------------------------------------------- */
+
+        function saveSettings() {
+            try {
+                localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+                    work: Number(els.workDuration.value),
+                    break: Number(els.breakDuration.value),
+                    long: Number(els.longDuration.value),
+                    autoBreaks: els.autoStartBreaks.checked,
+                    autoWork: els.autoStartWork.checked,
+                    sound: els.soundEnabled.checked,
+                }));
+            } catch { /* non-essential */ }
+        }
+
+        function restoreSettings() {
+            let saved = {};
+            try {
+                saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+            } catch { /* ignore malformed state */ }
+
+            if (Number.isFinite(saved.work)) els.workDuration.value = saved.work;
+            if (Number.isFinite(saved.break)) els.breakDuration.value = saved.break;
+            if (Number.isFinite(saved.long)) els.longDuration.value = saved.long;
+            if (typeof saved.autoBreaks === 'boolean') els.autoStartBreaks.checked = saved.autoBreaks;
+            if (typeof saved.autoWork === 'boolean') els.autoStartWork.checked = saved.autoWork;
+            if (typeof saved.sound === 'boolean') els.soundEnabled.checked = saved.sound;
+        }
+
+        function durationMs(which) {
+            return Number(els[MODES[which].slider].value) * 60000;
+        }
+
+        /* ---- Rendering --------------------------------------------------- */
+
+        function setStatus(message) {
+            els.statusBar.textContent = message;
+        }
+
+        function formatClock(ms) {
+            const total = Math.max(0, Math.ceil(ms / 1000));
+            const m = Math.floor(total / 60);
+            const s = total % 60;
+            return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        function render() {
+            const text = formatClock(remainingMs);
+            els.timeDisplay.textContent = text;
+
+            const progress = sessionMs > 0 ? remainingMs / sessionMs : 1;
+            els.ringProgress.style.strokeDashoffset = CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, progress)));
+
+            // Only hijack the tab title while actually counting down.
+            document.title = running ? `${text} · ${MODES[mode].label} – Klass` : BASE_TITLE;
+        }
+
+        function renderDots() {
+            const done = completedWork % CYCLE_LENGTH;
+            els.sessionDots.innerHTML = Array.from({ length: CYCLE_LENGTH },
+                (_, i) => `<span class="dot${i < done ? ' done' : ''}"></span>`).join('');
+            els.sessionCount.textContent = `${done}/${CYCLE_LENGTH}`;
+        }
+
+        function renderMode() {
+            els.stage.className = MODES[mode].cls + (running ? ' running' : '');
+            els.modeLabel.textContent = MODES[mode].label;
+            document.querySelectorAll('.mode-tab').forEach((tab) => {
+                const active = tab.dataset.mode === mode;
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', String(active));
+            });
+            els.startBtn.classList.toggle('hidden', running);
+            els.pauseBtn.classList.toggle('hidden', !running);
+        }
+
+        /* ---- Timing ------------------------------------------------------ */
+        /* Remaining time is derived from an absolute end timestamp rather than
+           accumulated ticks: background tabs get throttled, so a tick-counting
+           timer loses real time whenever the tab is hidden. */
+
+        function setMode(next, { announce = false } = {}) {
+            const wasRunning = running;
+            stopTicking();
+            running = false;
+            mode = next;
+            sessionMs = durationMs(next);
+            remainingMs = sessionMs;
+            endTime = null;
+            els.startLabel.textContent = 'Start';
+            renderMode();
+            render();
+            if (announce && wasRunning) {
+                setStatus(`Switched to ${MODES[next].label.toLowerCase()} — the session in progress was discarded.`);
+            }
+        }
+
+        function startTicking() {
+            stopTicking();
+            tickId = setInterval(tick, TICK_MS);
+        }
+
+        function stopTicking() {
+            if (tickId) {
+                clearInterval(tickId);
+                tickId = null;
+            }
+        }
+
+        function tick() {
+            if (!running || endTime === null) return;
+            remainingMs = endTime - now();
+            if (remainingMs <= 0) {
+                remainingMs = 0;
+                complete({ natural: true });
+                return;
+            }
+            render();
+        }
+
+        function start() {
+            if (running) return;
+            if (remainingMs <= 0) remainingMs = sessionMs;
+
+            unlockAudio();
+            running = true;
+            endTime = now() + remainingMs;
+            startTicking();
+            renderMode();
+            render();
+            setStatus(`${MODES[mode].label} running.`);
+        }
+
+        function pause() {
+            if (!running) return;
+            remainingMs = Math.max(0, endTime - now());
+            running = false;
+            endTime = null;
+            stopTicking();
+            els.startLabel.textContent = 'Resume';
+            renderMode();
+            render();
+            setStatus(`Paused at ${formatClock(remainingMs)}.`);
+        }
+
+        function reset() {
+            setMode(mode);
+            setStatus(`${MODES[mode].label} reset.`);
+        }
+
+        // Skip advances the cycle without banking the session — crediting it
+        // would let a one-second session count as a full pomodoro.
+        function skip() {
+            const skipped = MODES[mode].label.toLowerCase();
+            complete({ natural: false });
+            setStatus(`Skipped the ${skipped}.`);
+        }
+
+        function complete({ natural }) {
+            stopTicking();
+            running = false;
+            endTime = null;
+
+            if (natural && els.soundEnabled.checked) playChime();
+
+            const finishedWork = mode === 'work';
+            const credited = finishedWork && natural;
+
+            if (credited) {
+                // Credit the time actually spent, not the configured length.
+                const elapsedMinutes = Math.round(sessionMs / 60000);
+                const entry = todayEntry();
+                entry.pomodoros += 1;
+                entry.minutes += elapsedMinutes;
+                completedWork += 1;
+                streak += 1;
+                if (streak > stats.bestStreak) stats.bestStreak = streak;
+                saveStats();
+                renderDots();
+            }
+
+            // Only a credited work session advances the cycle, so skipping one
+            // leads to a short break rather than jumping to the long one.
+            const nextMode = finishedWork
+                ? (credited && completedWork % CYCLE_LENGTH === 0 ? 'long' : 'break')
+                : 'work';
+            const autoStart = finishedWork
+                ? els.autoStartBreaks.checked
+                : els.autoStartWork.checked;
+
+            setMode(nextMode);
+            renderStats();
+
+            if (natural) {
+                setStatus(finishedWork
+                    ? `Session complete — ${MODES[nextMode].label.toLowerCase()} is ready.`
+                    : 'Break over — ready for the next work session.');
+            }
+
+            if (autoStart) start();
+        }
+
+        /* ---- Sound ------------------------------------------------------- */
+
+        // The suite's shared chime, played once. Not ktempo's ChimePlayer: that
+        // ramps and repeats until dismissed, which suits "time's up, look here"
+        // but not a break quietly beginning.
+        const chime = new Audio('chime.mp3');
+        chime.preload = 'auto';
+        let audioUnlocked = false;
+
+        // Autoplay policy: prime the element during a user gesture so an
+        // auto-started session can still chime later without one.
+        function unlockAudio() {
+            if (audioUnlocked) return;
+            audioUnlocked = true;
+            const volume = chime.volume;
+            chime.volume = 0;
+            chime.play()
+                .then(() => { chime.pause(); chime.currentTime = 0; chime.volume = volume; })
+                .catch(() => { chime.volume = volume; });
+        }
+
+        function playChime() {
+            try {
+                chime.currentTime = 0;
+                chime.play().catch(() => {});
+            } catch { /* never let audio break the timer */ }
+        }
+
+        /* ---- Focus mode -------------------------------------------------- */
+
+        // Reparented, not cloned, so the running timer keeps driving the same
+        // nodes and the controls come with it.
+        const stageHome = els.stage.parentElement;
+
+        function enterFocus() {
+            els.focusContent.appendChild(els.stage);
+            els.focusOverlay.hidden = false;
+        }
+
+        function exitFocus() {
+            stageHome.insertBefore(els.stage, stageHome.firstChild);
+            els.focusOverlay.hidden = true;
+        }
+
+        els.focusBtn.addEventListener('click', enterFocus);
+        els.exitFocusBtn.addEventListener('click', exitFocus);
+
+        /* ---- Wiring ------------------------------------------------------ */
+
+        els.startBtn.addEventListener('click', start);
+        els.pauseBtn.addEventListener('click', pause);
+        els.resetBtn.addEventListener('click', reset);
+        els.skipBtn.addEventListener('click', skip);
+
+        document.querySelectorAll('.mode-tab').forEach((tab) => {
+            tab.addEventListener('click', () => setMode(tab.dataset.mode, { announce: true }));
+        });
+
+        [['workDuration', 'workValue', 'work'],
+         ['breakDuration', 'breakValue', 'break'],
+         ['longDuration', 'longValue', 'long']].forEach(([slider, label, which]) => {
+            els[slider].addEventListener('input', () => {
+                els[label].textContent = `${els[slider].value} min`;
+                // Resize the current session only when it isn't mid-run.
+                if (mode === which && !running) setMode(which);
+                saveSettings();
+            });
+        });
+
+        [els.autoStartBreaks, els.autoStartWork, els.soundEnabled]
+            .forEach((box) => box.addEventListener('change', saveSettings));
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !els.focusOverlay.hidden) {
+                exitFocus();
+                return;
+            }
+            const active = document.activeElement;
+            if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                running ? pause() : start();
+            }
+        });
+
+        // A throttled tab can freeze the interval entirely; one tick against the
+        // wall clock on return resyncs, including a session that already ended.
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && running) tick();
+        });
+
+        /* ---- Boot -------------------------------------------------------- */
+
+        restoreSettings();
+        loadStats();
+        els.workValue.textContent = `${els.workDuration.value} min`;
+        els.breakValue.textContent = `${els.breakDuration.value} min`;
+        els.longValue.textContent = `${els.longDuration.value} min`;
+        setMode('work');
+        renderDots();
+        renderStats();
+
+        // Debug/test surface, per assets/ktempo/app.js.
+        window.kpomodoro = {
+            setClock(fn) { now = fn || (() => Date.now()); },
+            tick,
+            state: () => ({ mode, running, remainingMs, sessionMs, completedWork, streak }),
+            stats: () => stats,
+        };
+    </script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Klass – Classroom Tools</title>
-    <meta name="description" content="Classroom tools: countdown timer, random name picker, team assignment, presenter roulette, seating chart generator, and QR sharer. Works offline.">
+    <meta name="description" content="Classroom tools: countdown timer, pomodoro timer, random name picker, spinning wheel, team assignment, presenter roulette, seating chart generator, QR sharer, and noise meter. Works offline.">
     <meta name="theme-color" content="#4f46e5">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" type="image/png" href="icons/favicon-64.png">
@@ -37,7 +37,7 @@
     <main class="flex-1 container mx-auto max-w-5xl px-6 py-12">
         <header class="mb-10 text-center">
             <h1 class="text-3xl md:text-4xl font-bold mb-3">Classroom Tools</h1>
-            <p class="k-status max-w-xl mx-auto text-base">Six simple tools for fair, engaging classroom sessions.
+            <p class="k-status max-w-xl mx-auto text-base">Nine simple tools for fair, engaging classroom sessions.
                 Everything runs in your browser and works offline once installed.</p>
         </header>
 
@@ -48,7 +48,17 @@
                 </div>
                 <div>
                     <h2 class="font-bold text-lg mb-1">Timer</h2>
-                    <p class="k-status">Countdown timer with deadline, quick timer, presets, focus and mini-window modes.</p>
+                    <p class="k-status">Time a single activity — countdown to a deadline, a quick timer, or presets.</p>
+                </div>
+            </a>
+
+            <a href="KPomodoro.html" class="accent-kpomodoro k-card p-6 flex items-start gap-4 hover:border-[var(--accent-border)] transition-colors">
+                <div class="k-tile w-12 h-12 rounded-lg flex-none flex items-center justify-center">
+                    <i class="fa-solid fa-stopwatch text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-lg mb-1">Pomodoro</h2>
+                    <p class="k-status">Run a repeating work-and-break study cycle, with session tracking and daily stats.</p>
                 </div>
             </a>
 
@@ -58,7 +68,17 @@
                 </div>
                 <div>
                     <h2 class="font-bold text-lg mb-1">Random Name Picker</h2>
-                    <p class="k-status">Pick a student at random for classroom participation, with undo and CSV export.</p>
+                    <p class="k-status">Pick a student in seconds — the quick, no-fuss picker, with undo and CSV export.</p>
+                </div>
+            </a>
+
+            <a href="KWheel.html" class="accent-kwheel k-card p-6 flex items-start gap-4 hover:border-[var(--accent-border)] transition-colors">
+                <div class="k-tile w-12 h-12 rounded-lg flex-none flex items-center justify-center">
+                    <i class="fa-solid fa-dharmachakra text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-lg mb-1">Spinning Wheel</h2>
+                    <p class="k-status">Pick a name the fun way — a big wheel the whole class watches spin.</p>
                 </div>
             </a>
 
@@ -99,6 +119,16 @@
                 <div>
                     <h2 class="font-bold text-lg mb-1">QR Sharer</h2>
                     <p class="k-status">Show a giant QR code on the projector so students can scan links instantly.</p>
+                </div>
+            </a>
+
+            <a href="KNoise.html" class="accent-knoise k-card p-6 flex items-start gap-4 hover:border-[var(--accent-border)] transition-colors">
+                <div class="k-tile w-12 h-12 rounded-lg flex-none flex items-center justify-center">
+                    <i class="fa-solid fa-volume-high text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-lg mb-1">Noise Meter</h2>
+                    <p class="k-status">Show classroom noise on screen, with a warning band and an alert when it gets too loud.</p>
                 </div>
             </a>
         </div>

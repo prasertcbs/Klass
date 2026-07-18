@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en" data-app="kwheel">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spinning Wheel – Klass</title>
+    <meta name="description" content="Spin a wheel to pick a name at random — a celebratory, projector-friendly picker for the classroom.">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <link rel="stylesheet" href="assets/accents.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <script src="assets/klass-util.js"></script>
+    <style>
+        /* The wheel sizes itself from its container; focus mode just gives it a
+           bigger box and the ResizeObserver repaints at the new resolution. */
+        .wheel-box {
+            position: relative;
+            width: min(var(--wheel-size, 26rem), 100%);
+            aspect-ratio: 1;
+            margin-inline: auto;
+        }
+        #wheelCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* The pointer overlaps whichever slice is on top, so it can't be tinted
+           with the accent — amber on the orange hue is invisible. Neutral ink
+           with a halo in the page background reads against all ten hues, in
+           both themes. */
+        .pointer {
+            position: absolute;
+            top: -0.6rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+            font-size: 2.25rem;
+            line-height: 1;
+            color: var(--text);
+            filter:
+                drop-shadow(0 0 2px var(--bg))
+                drop-shadow(0 0 2px var(--bg))
+                drop-shadow(0 2px 3px rgb(15 23 42 / 0.35));
+        }
+
+        .winner-label {
+            font-size: clamp(1.75rem, 5vw, 3rem);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+        }
+        .winner {
+            animation:
+                pop 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+                pulse 0.5s ease-in-out 0.6s infinite alternate;
+        }
+        @keyframes pop {
+            0% { transform: scale(0.9); }
+            55% { transform: scale(1.08); }
+            100% { transform: scale(1); }
+        }
+        @keyframes pulse {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(1.05); opacity: 0.8; }
+        }
+
+        .confetti {
+            position: fixed;
+            top: -10px;
+            width: 10px;
+            height: 10px;
+            z-index: 300;
+            pointer-events: none;
+            animation: confetti-fall 3s ease-in forwards;
+        }
+        @keyframes confetti-fall {
+            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+
+        /* ---- Projector focus mode (same overlay pattern as the other tools) ---- */
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        /* The stage has to fit one screen with no scrolling, so focus mode lays
+           it out as a fixed-height column and sizes the wheel from what's left
+           after the button and winner readout. */
+        .focus-content {
+            width: min(1400px, 92vw);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .focus-content #wheelStage {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.25rem;
+            padding: 3.5rem 0 1.5rem;
+            max-height: 100vh;
+        }
+        .focus-content #wheelStage > * { margin-top: 0; } /* neutralize mt-6 */
+        .focus-content .wheel-box { --wheel-size: min(58vh, 38rem); }
+        .focus-content .pointer { font-size: 3rem; }
+        .focus-content #winnerDisplay {
+            padding: 0.75rem 2.5rem;
+            width: auto;
+        }
+        .focus-content .winner-label { font-size: clamp(2rem, 6vw, 4rem); }
+        .exit-focus {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            opacity: 0.5;
+        }
+        .exit-focus:hover { opacity: 1; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay { animation: none; }
+            .winner { animation: none; }
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="flex items-center gap-3">
+                    <img class="k-logo" src="icons/icon.svg" alt="">
+                    <span class="text-lg font-bold">Klass</span>
+                </a>
+                <span class="k-badge">Spinning Wheel</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode" title="Focus mode">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Spinning Wheel</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Random selection made fun — add names or options, then spin the wheel in front of the class.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+
+            <div class="k-card p-6">
+                <div id="wheelStage">
+                    <div class="wheel-box">
+                        <div class="pointer" aria-hidden="true"><i class="fa-solid fa-caret-down"></i></div>
+                        <canvas id="wheelCanvas"></canvas>
+                    </div>
+
+                    <div class="flex justify-center mt-6">
+                        <button id="spinBtn" class="k-btn k-btn-primary text-lg" style="padding: 0.875rem 2.5rem;">
+                            <i class="fa-solid fa-arrows-spin"></i>Spin
+                        </button>
+                    </div>
+
+                    <div id="winnerDisplay" class="k-stage mt-6 p-6 text-center" hidden>
+                        <div class="k-label mb-1">Winner</div>
+                        <div id="winnerName" class="winner-label t-accent" role="status"></div>
+                    </div>
+                </div>
+
+                <div id="statusBar" class="k-status mt-6 pt-4 text-center" style="border-top: 1px solid var(--border);" role="status">
+                    Add at least two entries, then press Spin.
+                </div>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="k-card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="k-card-title"><i class="fa-solid fa-list"></i>Entries</h2>
+                        <div class="k-badge"><span id="entryCount">0</span><span class="font-normal">entries</span></div>
+                    </div>
+
+                    <textarea id="entriesInput" rows="8" placeholder="Enter names or items, one per line..." class="k-input w-full resize-none font-mono"></textarea>
+
+                    <div class="flex gap-2 mt-4">
+                        <button id="shuffleBtn" class="k-btn k-btn-secondary flex-1">
+                            <i class="fa-solid fa-shuffle"></i>Shuffle
+                        </button>
+                        <button id="clearBtn" class="k-btn k-btn-danger k-btn-icon" aria-label="Clear entries and history" title="Clear entries and history">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+
+                    <div class="mt-4 pt-4" style="border-top: 1px solid var(--border);">
+                        <label for="quickAddInput" class="k-label block mb-2">Quick add</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="quickAddInput" placeholder="Add an entry…" class="k-input flex-1">
+                            <button id="quickAddBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Add entry" title="Add entry">
+                                <i class="fa-solid fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-4 space-y-3" style="border-top: 1px solid var(--border);">
+                        <label class="flex items-center gap-2 k-label cursor-pointer">
+                            <input type="checkbox" id="removeWinner" checked class="k-check">
+                            Remove the winner on the next spin
+                        </label>
+                        <label class="flex items-center gap-2 k-label cursor-pointer">
+                            <input type="checkbox" id="soundEnabled" checked class="k-check">
+                            Play sound effects
+                        </label>
+                    </div>
+                </div>
+
+                <div class="k-card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="k-card-title"><i class="fa-solid fa-clock-rotate-left"></i>History</h2>
+                        <div class="k-badge"><span id="historyCount">0</span><span class="font-normal">spins</span></div>
+                    </div>
+                    <div id="historyList" class="flex flex-wrap gap-2 content-start min-h-[3rem]">
+                        <span class="k-status">No spins yet</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 <a href="https://github.com/prasertcbs" target="_blank" rel="noopener" class="t-accent hover:underline">Prasert Kanawattanachai</a> &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <!-- Projector focus mode: #wheelStage is moved in here while open -->
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div id="focusContent" class="focus-content"></div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+
+        const els = {
+            canvas: $('wheelCanvas'),
+            wheelBox: document.querySelector('.wheel-box'),
+            stage: $('wheelStage'),
+            spinBtn: $('spinBtn'),
+            entriesInput: $('entriesInput'),
+            entryCount: $('entryCount'),
+            shuffleBtn: $('shuffleBtn'),
+            clearBtn: $('clearBtn'),
+            quickAddInput: $('quickAddInput'),
+            quickAddBtn: $('quickAddBtn'),
+            removeWinner: $('removeWinner'),
+            soundEnabled: $('soundEnabled'),
+            winnerDisplay: $('winnerDisplay'),
+            winnerName: $('winnerName'),
+            historyList: $('historyList'),
+            historyCount: $('historyCount'),
+            statusBar: $('statusBar'),
+            focusBtn: $('focusBtn'),
+            focusOverlay: $('focusOverlay'),
+            focusContent: $('focusContent'),
+            exitFocusBtn: $('exitFocusBtn'),
+        };
+
+        const ctx = els.canvas.getContext('2d');
+        const HUE_COUNT = 10;
+        const HISTORY_LIMIT = 50;
+        const SAMPLE_ENTRIES = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Henry'];
+
+        let entries = [];
+        let spinHistory = [];
+        let currentRotation = 0;
+        let isSpinning = false;
+        // The last winner stays on the wheel so the class can see it sitting
+        // under the pointer; it comes off at the start of the next spin.
+        let pendingRemoval = null;
+
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+        /* ---- Theme-aware palette ---------------------------------------- */
+
+        // Canvas pixels don't inherit CSS variables, so the palette is read from
+        // the document at draw time and the wheel is repainted when the theme
+        // flips (see the MutationObserver below).
+        function palette() {
+            const root = getComputedStyle(document.documentElement);
+            const token = (name) => root.getPropertyValue(name).trim();
+            const isDark = document.documentElement.classList.contains('dark');
+            return {
+                hues: Array.from({ length: HUE_COUNT }, (_, i) => token(`--k-hue-${i}`)),
+                separator: token('--surface'),
+                rim: token('--border-strong'),
+                hub: token('--surface'),
+                hubRing: token('--accent'),
+                emptyFill: token('--surface-2'),
+                emptyText: token('--text-faint'),
+                // Light theme uses dark 700-shades, dark theme uses light
+                // 400-shades — so the readable label ink flips with it.
+                label: isDark ? '#0f172a' : '#ffffff',
+            };
+        }
+
+        /* ---- Rendering --------------------------------------------------- */
+
+        // Backing store is sized in device pixels so the wheel stays sharp on
+        // HiDPI screens and projectors; all drawing below uses CSS pixels.
+        function resizeCanvas() {
+            const rect = els.wheelBox.getBoundingClientRect();
+            if (!rect.width) return;
+            const dpr = window.devicePixelRatio || 1;
+            els.canvas.width = Math.round(rect.width * dpr);
+            els.canvas.height = Math.round(rect.height * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            drawWheel();
+        }
+
+        // Trim to what actually fits, rather than assuming a fixed character count.
+        function fitText(text, maxWidth) {
+            if (ctx.measureText(text).width <= maxWidth) return text;
+            let trimmed = text;
+            while (trimmed.length > 1 && ctx.measureText(trimmed + '…').width > maxWidth) {
+                trimmed = trimmed.slice(0, -1);
+            }
+            return trimmed + '…';
+        }
+
+        function drawWheel() {
+            const size = els.canvas.width / (window.devicePixelRatio || 1);
+            if (!size) return;
+
+            const center = size / 2;
+            const radius = center - 6;
+            const colors = palette();
+
+            ctx.clearRect(0, 0, size, size);
+
+            if (entries.length === 0) {
+                ctx.beginPath();
+                ctx.arc(center, center, radius, 0, 2 * Math.PI);
+                ctx.fillStyle = colors.emptyFill;
+                ctx.fill();
+                ctx.strokeStyle = colors.rim;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                ctx.fillStyle = colors.emptyText;
+                ctx.font = `${Math.max(13, size * 0.045)}px Inter, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('Add entries to spin', center, center);
+                return;
+            }
+
+            const sliceAngle = (2 * Math.PI) / entries.length;
+            const labelSize = Math.max(11, Math.min(20, size * 0.038));
+
+            entries.forEach((entry, i) => {
+                const startAngle = i * sliceAngle + currentRotation;
+
+                ctx.beginPath();
+                ctx.moveTo(center, center);
+                ctx.arc(center, center, radius, startAngle, startAngle + sliceAngle);
+                ctx.closePath();
+                ctx.fillStyle = colors.hues[i % HUE_COUNT];
+                ctx.fill();
+                ctx.strokeStyle = colors.separator;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Slices on the left half would render their label upside down;
+                // rotate those an extra half turn and run the text inward instead.
+                const midAngle = startAngle + sliceAngle / 2;
+                const flipped = Math.cos(midAngle) < 0;
+                const inset = radius - size * 0.035;
+
+                ctx.save();
+                ctx.translate(center, center);
+                ctx.rotate(midAngle + (flipped ? Math.PI : 0));
+                ctx.textAlign = flipped ? 'left' : 'right';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = colors.label;
+                ctx.font = `bold ${labelSize}px Inter, sans-serif`;
+                ctx.fillText(fitText(entry, radius - size * 0.11), flipped ? -inset : inset, 0);
+                ctx.restore();
+            });
+
+            // Hub
+            ctx.beginPath();
+            ctx.arc(center, center, Math.max(18, size * 0.06), 0, 2 * Math.PI);
+            ctx.fillStyle = colors.hub;
+            ctx.fill();
+            ctx.strokeStyle = colors.hubRing;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Rim
+            ctx.beginPath();
+            ctx.arc(center, center, radius, 0, 2 * Math.PI);
+            ctx.strokeStyle = colors.rim;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+
+        /* ---- Entries ----------------------------------------------------- */
+
+        function parseEntries() {
+            entries = els.entriesInput.value
+                .split('\n')
+                .map((e) => e.trim())
+                .filter((e) => e.length > 0);
+            els.entryCount.textContent = entries.length;
+            els.spinBtn.disabled = entries.length < 2;
+        }
+
+        function setStatus(message) {
+            els.statusBar.textContent = message;
+        }
+
+        function refreshStatus() {
+            if (isSpinning) return;
+            if (entries.length === 0) setStatus('Add at least two entries, then press Spin.');
+            else if (entries.length === 1) setStatus('One entry left — add another to spin again.');
+            else setStatus(`${entries.length} entries on the wheel. Press Spin, or hit Space.`);
+        }
+
+        function onEntriesChanged({ persist = true } = {}) {
+            parseEntries();
+            drawWheel();
+            refreshStatus();
+            if (persist) saveSettings();
+        }
+
+        /* ---- Settings ---------------------------------------------------- */
+
+        const STORAGE_KEY = 'kwheel.settings.v1';
+
+        function saveSettings() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    entries: els.entriesInput.value,
+                    removeWinner: els.removeWinner.checked,
+                    sound: els.soundEnabled.checked,
+                    // Saved with the entries it refers to, so a reload between
+                    // two spins doesn't resurrect the last winner.
+                    pendingRemoval,
+                }));
+            } catch { /* storage may be unavailable; settings are non-essential */ }
+        }
+
+        function restoreSettings() {
+            let saved = {};
+            try {
+                saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            } catch { /* ignore malformed state */ }
+
+            els.entriesInput.value = typeof saved.entries === 'string'
+                ? saved.entries
+                : SAMPLE_ENTRIES.join('\n');
+            if (typeof saved.removeWinner === 'boolean') els.removeWinner.checked = saved.removeWinner;
+            if (typeof saved.sound === 'boolean') els.soundEnabled.checked = saved.sound;
+            pendingRemoval = typeof saved.pendingRemoval === 'string' ? saved.pendingRemoval : null;
+        }
+
+        /* ---- Spinning ---------------------------------------------------- */
+
+        // Matched by name rather than index: the list may have been shuffled or
+        // hand-edited between the two spins.
+        function applyPendingRemoval() {
+            if (pendingRemoval === null) return false;
+
+            const name = pendingRemoval;
+            pendingRemoval = null;
+
+            if (!els.removeWinner.checked) return false;  // user changed their mind
+            const index = entries.indexOf(name);
+            if (index === -1) return false;               // already edited away
+
+            entries.splice(index, 1);
+            els.entriesInput.value = entries.join('\n');
+            onEntriesChanged();
+            return true;
+        }
+
+        function spin() {
+            if (isSpinning) return;
+
+            const removed = applyPendingRemoval();
+            if (entries.length < 2) {
+                setStatus(removed
+                    ? 'Only one entry left — add another to spin again.'
+                    : 'Add at least two entries, then press Spin.');
+                return;
+            }
+
+            isSpinning = true;
+            els.spinBtn.disabled = true;
+            els.winnerDisplay.hidden = true;
+            els.winnerName.classList.remove('winner');
+            setStatus('Spinning…');
+
+            unlockAudio();
+            playTick();
+
+            const duration = 4000 + Math.random() * 2000;
+            const totalRotation = (5 + Math.random() * 5) * 2 * Math.PI;
+            const startRotation = currentRotation;
+            const startTime = performance.now();
+
+            function frame(now) {
+                const progress = Math.min((now - startTime) / duration, 1);
+                currentRotation = startRotation + totalRotation * (1 - Math.pow(1 - progress, 4));
+                drawWheel();
+
+                if (progress < 1) {
+                    requestAnimationFrame(frame);
+                } else {
+                    isSpinning = false;
+                    els.spinBtn.disabled = false;
+                    announceWinner();
+                }
+            }
+
+            requestAnimationFrame(frame);
+        }
+
+        // The pointer sits at 12 o'clock. Canvas angles start at 3 o'clock and
+        // increase clockwise, so 3π/2 is straight up; subtracting the current
+        // rotation gives the slice currently under the pointer.
+        function winnerIndex() {
+            const sliceAngle = (2 * Math.PI) / entries.length;
+            const rotation = ((currentRotation % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            const pointerAngle = ((3 * Math.PI / 2 - rotation) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+            return Math.floor(pointerAngle / sliceAngle) % entries.length;
+        }
+
+        function announceWinner() {
+            const index = winnerIndex();
+            const winner = entries[index];
+
+            els.winnerName.textContent = winner;
+            els.winnerDisplay.hidden = false;
+            els.winnerName.classList.add('winner');
+
+            spinHistory.unshift(winner);
+            if (spinHistory.length > HISTORY_LIMIT) spinHistory.length = HISTORY_LIMIT;
+            renderHistory();
+
+            playFanfare();
+            launchConfetti();
+
+            if (els.removeWinner.checked) {
+                // Deferred, not removed now — redrawing the wheel here would
+                // snatch the winning slice away from under the pointer just as
+                // everyone looks at it.
+                pendingRemoval = winner;
+                saveSettings();
+                setStatus(`${winner} wins — comes off the wheel on the next spin.`);
+            } else {
+                setStatus(`${winner} wins.`);
+            }
+        }
+
+        function renderHistory() {
+            els.historyCount.textContent = spinHistory.length;
+            if (spinHistory.length === 0) {
+                els.historyList.innerHTML = '<span class="k-status">No spins yet</span>';
+                return;
+            }
+            els.historyList.innerHTML = spinHistory
+                .map((name, i) => {
+                    const label = String(name).replace(/[&<>"]/g,
+                        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+                    return `<span class="k-badge"><span class="font-normal t-faint">${i + 1}</span>${label}</span>`;
+                })
+                .join('');
+        }
+
+        /* ---- Actions ----------------------------------------------------- */
+
+        function shuffleEntries() {
+            parseEntries();
+            entries = KlassUtil.shuffle(entries);
+            els.entriesInput.value = entries.join('\n');
+            currentRotation = Math.random() * 2 * Math.PI;
+            onEntriesChanged();
+            setStatus('Entries shuffled.');
+        }
+
+        function clearAll() {
+            els.entriesInput.value = '';
+            spinHistory = [];
+            currentRotation = 0;
+            pendingRemoval = null;
+            els.winnerDisplay.hidden = true;
+            els.winnerName.classList.remove('winner');
+            renderHistory();
+            onEntriesChanged();
+        }
+
+        function quickAdd() {
+            const value = els.quickAddInput.value.trim();
+            if (!value) return;
+            const current = els.entriesInput.value.trim();
+            els.entriesInput.value = current ? `${current}\n${value}` : value;
+            els.quickAddInput.value = '';
+            onEntriesChanged();
+            setStatus(`Added ${value}.`);
+        }
+
+        /* ---- Sound ------------------------------------------------------- */
+
+        // One shared context, created on the first spin gesture. The previous
+        // version built a new AudioContext per sound; browsers cap concurrent
+        // contexts (~6 in Chrome), so audio went silent after a few spins.
+        let audioCtx = null;
+
+        function unlockAudio() {
+            if (!els.soundEnabled.checked) return;
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function tone(frequency, startOffset, duration, peak) {
+            const at = audioCtx.currentTime + startOffset;
+            const oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = frequency;
+            // Ramped rather than switched, so the tone doesn't click.
+            gain.gain.setValueAtTime(0.0001, at);
+            gain.gain.exponentialRampToValueAtTime(peak, at + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+            oscillator.connect(gain);
+            gain.connect(audioCtx.destination);
+            oscillator.start(at);
+            oscillator.stop(at + duration + 0.02);
+        }
+
+        function playTick() {
+            if (!els.soundEnabled.checked || !audioCtx) return;
+            tone(800, 0, 0.05, 0.1);
+        }
+
+        function playFanfare() {
+            if (!els.soundEnabled.checked || !audioCtx) return;
+            [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => tone(freq, i * 0.1, 0.2, 0.15));
+        }
+
+        /* ---- Confetti ---------------------------------------------------- */
+
+        function launchConfetti() {
+            if (reduceMotion.matches) return;
+
+            const colors = palette().hues;
+            const fragment = document.createDocumentFragment();
+            const pieces = [];
+
+            for (let i = 0; i < 50; i++) {
+                const piece = document.createElement('div');
+                piece.className = 'confetti';
+                piece.style.left = `${Math.random() * 100}vw`;
+                piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+                piece.style.animationDuration = `${2 + Math.random() * 2}s`;
+                piece.style.animationDelay = `${Math.random() * 0.5}s`;
+                fragment.appendChild(piece);
+                pieces.push(piece);
+            }
+
+            document.body.appendChild(fragment);
+            setTimeout(() => pieces.forEach((p) => p.remove()), 4500);
+        }
+
+        /* ---- Focus mode -------------------------------------------------- */
+
+        // The stage is reparented (not cloned) so the running animation keeps
+        // driving the same canvas, and the Spin button comes with it.
+        const stageHome = els.stage.parentElement;
+
+        function enterFocus() {
+            els.focusContent.appendChild(els.stage);
+            els.focusOverlay.hidden = false;
+            resizeCanvas();
+        }
+
+        function exitFocus() {
+            stageHome.insertBefore(els.stage, stageHome.firstChild);
+            els.focusOverlay.hidden = true;
+            resizeCanvas();
+        }
+
+        els.focusBtn.addEventListener('click', enterFocus);
+        els.exitFocusBtn.addEventListener('click', exitFocus);
+
+        /* ---- Wiring ------------------------------------------------------ */
+
+        els.spinBtn.addEventListener('click', spin);
+        els.shuffleBtn.addEventListener('click', shuffleEntries);
+        els.clearBtn.addEventListener('click', clearAll);
+        els.quickAddBtn.addEventListener('click', quickAdd);
+        els.quickAddInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') quickAdd();
+        });
+        els.entriesInput.addEventListener('input', () => onEntriesChanged());
+        els.removeWinner.addEventListener('change', saveSettings);
+        els.soundEnabled.addEventListener('change', saveSettings);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !els.focusOverlay.hidden) {
+                exitFocus();
+                return;
+            }
+            // Don't hijack the spacebar while a field has focus.
+            const active = document.activeElement;
+            if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                spin();
+            }
+        });
+
+        // Repaint whenever the theme flips, whoever flips it.
+        new MutationObserver(drawWheel)
+            .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+        // Covers the initial layout, window resizes, and the focus-mode swap.
+        new ResizeObserver(resizeCanvas).observe(els.wheelBox);
+
+        restoreSettings();
+        onEntriesChanged({ persist: false });
+        renderHistory();
+        resizeCanvas();
+    </script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

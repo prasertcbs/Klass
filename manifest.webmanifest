@@ -1,7 +1,7 @@
 {
     "name": "Klass – Classroom Tools",
     "short_name": "Klass",
-    "description": "Classroom tools: countdown timer, random name picker, team assignment, presenter roulette, seating chart generator, and QR sharer. Works offline.",
+    "description": "Classroom tools: countdown timer, pomodoro timer, random name picker, spinning wheel, team assignment, presenter roulette, seating chart generator, QR sharer, and noise meter. Works offline.",
     "start_url": "./",
     "scope": "./",
     "display": "standalone",
@@ -54,6 +54,21 @@
         {
             "name": "QR Sharer",
             "url": "./KQR.html",
+            "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "Noise Meter",
+            "url": "./KNoise.html",
+            "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "Spinning Wheel",
+            "url": "./KWheel.html",
+            "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "Pomodoro Timer",
+            "url": "./KPomodoro.html",
             "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
         }
     ]

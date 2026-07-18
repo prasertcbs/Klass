@@ -112,6 +112,60 @@ html.dark[data-app="kqr"], html.dark .accent-kqr {
     --ring: rgb(192 132 252 / 0.4);
 }
 
+/* ── KNoise · teal ── */
+html[data-app="knoise"], .accent-knoise {
+    --accent: #0f766e;
+    --accent-hover: #115e59;
+    --accent-fg: #0f766e;
+    --accent-soft: #f0fdfa;
+    --accent-border: #99f6e4;
+    --ring: rgb(15 118 110 / 0.35);
+}
+html.dark[data-app="knoise"], html.dark .accent-knoise {
+    --accent: #0f766e;
+    --accent-hover: #0d9488;
+    --accent-fg: #2dd4bf;
+    --accent-soft: rgb(45 212 191 / 0.15);
+    --accent-border: rgb(45 212 191 / 0.35);
+    --ring: rgb(45 212 191 / 0.4);
+}
+
+/* ── KWheel · amber ── */
+html[data-app="kwheel"], .accent-kwheel {
+    --accent: #b45309;
+    --accent-hover: #92400e;
+    --accent-fg: #b45309;
+    --accent-soft: #fffbeb;
+    --accent-border: #fde68a;
+    --ring: rgb(180 83 9 / 0.35);
+}
+html.dark[data-app="kwheel"], html.dark .accent-kwheel {
+    --accent: #b45309;
+    --accent-hover: #d97706;
+    --accent-fg: #fbbf24;
+    --accent-soft: rgb(251 191 36 / 0.15);
+    --accent-border: rgb(251 191 36 / 0.35);
+    --ring: rgb(251 191 36 / 0.4);
+}
+
+/* ── KPomodoro · fuchsia ── */
+html[data-app="kpomodoro"], .accent-kpomodoro {
+    --accent: #a21caf;
+    --accent-hover: #86198f;
+    --accent-fg: #a21caf;
+    --accent-soft: #fdf4ff;
+    --accent-border: #f5d0fe;
+    --ring: rgb(162 28 175 / 0.35);
+}
+html.dark[data-app="kpomodoro"], html.dark .accent-kpomodoro {
+    --accent: #a21caf;
+    --accent-hover: #c026d3;
+    --accent-fg: #e879f9;
+    --accent-soft: rgb(232 121 249 / 0.15);
+    --accent-border: rgb(232 121 249 / 0.35);
+    --ring: rgb(232 121 249 / 0.4);
+}
+
 /* Launcher tiles: colored icon square per app */
 .k-tile {
     background-color: var(--accent-soft);
