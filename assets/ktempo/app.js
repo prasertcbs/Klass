@@ -120,6 +120,25 @@ function buildPresets() {
   els.presets.appendChild(frag);
 }
 
+// ── Fit-to-width ─────────────────────────────────────────────────────────
+// The timer font sizes are tuned for "00:00"; longer text ("TIME'S UP",
+// "10:00:00") overflows the centered line and gets clipped on both edges.
+// Scale the line down via --fit; the pulse keyframes compose with it, and
+// the 1.08 headroom keeps the pulse's peak inside the box too.
+function fitLine(line, box) {
+  if (!line || !box || box.clientWidth === 0) return;
+  const cs = box.ownerDocument.defaultView.getComputedStyle(box);
+  const avail = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const needed = Math.max(line.scrollWidth, line.clientWidth) * 1.08;
+  const fit = needed > avail ? Math.max(avail / needed, 0.1) : 1;
+  line.style.setProperty("--fit", String(fit));
+}
+function fitTimerLines() {
+  fitLine(els.timerLine, els.timerLine.parentElement);
+  fitLine(els.focusTimerLine, els.focusTimerLine.parentElement);
+  if (compactEls) fitLine(compactEls.line, compactEls.root);
+}
+
 // ── Rendering (engine "change" → DOM) ────────────────────────────────────
 function render() {
   const color = engine.displayColorHex;
@@ -175,6 +194,8 @@ function render() {
       compactEls.doc.documentElement.style.setProperty("--display-color", color);
     }
   }
+
+  fitTimerLines();
 }
 
 engine.addEventListener("change", (e) => {
@@ -302,6 +323,7 @@ async function toggleCompactMode() {
       compactEls = { line: content.line, text: content.text, root: content.root, doc: pipWindow.document };
       isCompactMode = true;
       pipWindow.addEventListener("pagehide", onPipClosed, { once: true });
+      pipWindow.addEventListener("resize", fitTimerLines);
       render();
       return;
     } catch { pipWindow = null; /* fall through to overlay */ }
@@ -376,6 +398,12 @@ window.addEventListener("keydown", (e) => {
       break;
   }
 });
+
+// Refit the timer line when layout changes while the engine is idle/expired
+// (no ticks → no render): window resize, sidebar collapse, late font load.
+window.addEventListener("resize", fitTimerLines);
+els.sidebar.addEventListener("transitionend", fitTimerLines);
+document.fonts?.ready.then(fitTimerLines);
 
 // Recompute against the wall clock when the tab regains focus (background
 // throttling can freeze setInterval; the engine derives from an absolute end

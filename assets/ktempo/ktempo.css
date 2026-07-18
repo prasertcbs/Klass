@@ -145,6 +145,9 @@ body {
   align-items: center;
   gap: 24px;
   transform-origin: 50% 50%;
+  /* --fit is set by app.js when the text ("TIME'S UP") outgrows the viewbox;
+     the pulse keyframes below must compose with it, not overwrite it. */
+  transform: scale(var(--fit, 1));
 }
 .timer-text {
   font-family: "JetBrains Mono", monospace;
@@ -297,6 +300,9 @@ body {
 }
 .focus-overlay[hidden] { display: none; }
 .focus-overlay.expired { background: var(--expired-bg); }
+/* Span the overlay: as a max-content flex child it would outgrow the viewport
+   and fitLine would measure the oversized box instead of the visible area. */
+.timer-viewbox.focus { width: 100%; }
 .timer-viewbox.focus .timer-text { font-size: clamp(64px, 18vw, 360px); }
 .timer-viewbox.focus .alarm-icon { width: clamp(64px, 11vw, 180px); height: clamp(64px, 11vw, 180px); }
 .exit-focus {
@@ -361,8 +367,8 @@ body {
 /* ═══ PULSE ANIMATION ═══ */
 .pulsing { animation: pulse 0.5s ease-in-out infinite alternate; }
 @keyframes pulse {
-  from { transform: scale(1.0); opacity: 1.0; }
-  to   { transform: scale(1.08); opacity: 0.75; }
+  from { transform: scale(var(--fit, 1)); opacity: 1.0; }
+  to   { transform: scale(calc(var(--fit, 1) * 1.08)); opacity: 0.75; }
 }
 @keyframes fadein {
   from { opacity: 0; }
