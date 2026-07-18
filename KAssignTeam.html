@@ -172,12 +172,12 @@
 
                     <div class="space-y-4">
                         <div>
-                            <label for="groupCount" class="k-label block mb-2">Number of Groups</label>
+                            <label for="groupCount" class="k-label block mb-2">Number of Teams</label>
                             <input type="number" id="groupCount" min="2" max="20" value="3" class="k-input w-full text-center">
                         </div>
 
                         <button id="assignBtn" onclick="randomizeGroups()" class="k-btn k-btn-primary w-full">
-                            <i class="fa-solid fa-shuffle"></i>Assign Groups
+                            <i class="fa-solid fa-shuffle"></i>Assign Teams
                         </button>
 
                         <button id="downloadBtn" onclick="downloadCSV()" class="k-btn k-btn-secondary w-full hidden">
@@ -196,7 +196,7 @@
                 <div id="result" class="space-y-4">
                     <div class="text-center t-faint py-8">
                         <i class="fa-solid fa-users text-4xl mb-3 opacity-40"></i>
-                        <p>Configure settings and click "Assign Groups" to generate teams</p>
+                        <p>Configure settings and click "Assign Teams" to generate teams</p>
                     </div>
                 </div>
             </div>
@@ -215,7 +215,7 @@
         <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
         <div class="focus-actions">
             <button id="focusAssignBtn" class="k-btn k-btn-primary" onclick="randomizeGroups()">
-                <i class="fa-solid fa-shuffle"></i>Assign Groups
+                <i class="fa-solid fa-shuffle"></i>Assign Teams
             </button>
         </div>
     </div>
@@ -283,7 +283,7 @@
                 html += `
                     <div class="team-group g${i % 10} p-4">
                         <div class="flex items-center gap-3 mb-3">
-                            <span class="group-title text-lg font-bold">Group ${i + 1}</span>
+                            <span class="group-title text-lg font-bold">Team ${i + 1}</span>
                             <span class="k-status">${grp.length} members</span>
                         </div>
                         <div class="flex flex-wrap gap-2">`;
@@ -339,20 +339,21 @@
                 return;
             }
             if (nGroups < 2) {
-                setStatus('Minimum 2 groups required');
+                setStatus('Minimum 2 teams required');
                 return;
             }
             if (nGroups > students.length) {
-                setStatus('More groups than students');
+                setStatus('More teams than students');
                 return;
             }
             if (nGroups > 20) {
-                setStatus('Maximum 20 groups allowed');
+                setStatus('Maximum 20 teams allowed');
                 return;
             }
 
             setAssignDisabled(true);
             setStatus('Assigning teams...');
+            enterFocus(); // show the assignment on the big stage, like KRandom's spin
 
             students = KlassUtil.shuffle(students);
             groups = balancedGroups(students, nGroups);
@@ -374,8 +375,8 @@
 
         function downloadCSV() {
             if (!groupData.length) return;
-            const rows = [['Group', 'ID', 'Name'], ...groupData.map(row => [row.group, row.id, row.name])];
-            KlassUtil.downloadCsv('group_assignments.csv', KlassUtil.toCsv(rows));
+            const rows = [['Team', 'ID', 'Name'], ...groupData.map(row => [row.group, row.id, row.name])];
+            KlassUtil.downloadCsv('team_assignments.csv', KlassUtil.toCsv(rows));
             setStatus('CSV downloaded');
         }
 
