@@ -203,7 +203,7 @@
                 <span class="k-badge">Pomodoro</span>
             </div>
             <div class="flex items-center gap-2">
-                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode (F)" title="Focus mode (F)">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Fullscreen focus mode (F)" title="Fullscreen focus mode (F / F11)">
                     <i class="fa-solid fa-expand"></i>
                 </button>
                 <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
@@ -771,12 +771,24 @@
         function enterFocus() {
             els.focusContent.appendChild(els.stage);
             els.focusOverlay.hidden = false;
+            // Real fullscreen, as KTempo does: the overlay alone still leaves
+            // the browser's tabs and address bar on the projector. Callers are
+            // all user gestures, which the Fullscreen API requires.
+            document.documentElement.requestFullscreen?.().catch(() => {});
         }
 
         function exitFocus() {
             stageHome.insertBefore(els.stage, stageHome.firstChild);
             els.focusOverlay.hidden = true;
+            if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
         }
+
+        // Esc and F11 are handled by the browser itself, which only tells us
+        // afterwards — so the overlay follows the fullscreen state rather than
+        // the other way round, or it would be left open over a windowed page.
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && !els.focusOverlay.hidden) exitFocus();
+        });
 
         function toggleFocus() {
             els.focusOverlay.hidden ? enterFocus() : exitFocus();
@@ -828,8 +840,11 @@
                 running ? pause() : start();
                 return;
             }
-            // Modifier check keeps Ctrl/Cmd+F (browser find) working.
-            if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // F11 too, so the browser's own fullscreen key opens the dial
+            // rather than fullscreening the ordinary page. Modifier check keeps
+            // Ctrl/Cmd+F (browser find) working.
+            if (e.key === 'F11' ||
+                (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey)) {
                 e.preventDefault();
                 toggleFocus();
             }
