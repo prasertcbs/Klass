@@ -16,6 +16,27 @@
     <script src="assets/theme.js"></script>
     <script src="assets/klass-util.js"></script>
     <style>
+        /* Team elements re-scope the accent tokens to blue so Team vs Member
+           reads at a glance (blue/orange is a colorblind-safe pair); Member
+           keeps the app's orange accent. Everything inside — title icon,
+           stage text, winner state, chips, buttons, progress, spin glow —
+           follows automatically because it all keys off --accent*. */
+        .accent-team {
+            --accent: #1d4ed8;
+            --accent-hover: #1e40af;
+            --accent-fg: #1d4ed8;
+            --accent-soft: #eff6ff;
+            --accent-border: #bfdbfe;
+            --ring: rgb(29 78 216 / 0.35);
+        }
+        html.dark .accent-team {
+            --accent: #1d4ed8;
+            --accent-hover: #2563eb;
+            --accent-fg: #60a5fa;
+            --accent-soft: rgb(96 165 250 / 0.15);
+            --accent-border: rgb(96 165 250 / 0.35);
+            --ring: rgb(96 165 250 / 0.4);
+        }
         .stage-text {
             font-size: clamp(1.75rem, 4.5vw, 3.5rem);
             font-weight: 800;
@@ -169,7 +190,7 @@
         <!-- Hero spin stage -->
         <section class="grid gap-6 md:grid-cols-2" aria-label="Roulette stage">
 
-            <div class="k-card p-6 flex flex-col">
+            <div class="k-card p-6 flex flex-col accent-team">
                 <h2 class="k-card-title mb-4"><i class="fa-solid fa-users"></i>Team</h2>
                 <div id="teamRoulette" class="k-stage stage-box relative overflow-hidden min-h-[140px] md:min-h-[200px] flex items-center justify-center px-4 py-6 mb-4">
                     <span id="teamRouletteText" class="stage-text t-faint text-center">Load data to begin</span>
@@ -282,7 +303,7 @@
     <!-- Projector focus mode (KRandom/KTempo-style overlay, toggled via [hidden]) -->
     <div id="focusOverlay" class="focus-overlay" hidden>
         <div class="w-full max-w-[92vw] flex flex-col items-center gap-8 text-center">
-            <div class="w-full">
+            <div class="w-full accent-team">
                 <div class="k-label uppercase tracking-wide mb-1">Team</div>
                 <div id="focusTeamText" class="focus-text focus-team-text t-faint">Load data to begin</div>
                 <div id="focusTeamProgress" class="progress-bar h-1 w-full max-w-md mx-auto mt-3 rounded-full" style="display:none;"></div>
@@ -295,7 +316,7 @@
         </div>
         <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
         <div class="focus-actions">
-            <button id="focusSpinTeamBtn" class="k-btn k-btn-primary"><i class="fa-solid fa-rotate"></i>Spin Team</button>
+            <button id="focusSpinTeamBtn" class="k-btn k-btn-primary accent-team"><i class="fa-solid fa-rotate"></i>Spin Team</button>
             <button id="focusSpinMemberBtn" class="k-btn k-btn-primary"><i class="fa-solid fa-rotate"></i>Spin Member</button>
         </div>
     </div>
@@ -648,7 +669,7 @@ function renderHistory(){
   state.drawHistory.forEach((r,i)=>{
     let tr = document.createElement('tr');
     tr.className = 'cursor-pointer transition-colors';
-    tr.innerHTML = `<td class="py-2 px-2 t-faint">${i+1}</td><td class="py-2 px-2 t-muted">${r.time}</td><td class="py-2 px-2 t-strong">${r.team}</td><td class="py-2 px-2 t-accent">${r.member}</td>`;
+    tr.innerHTML = `<td class="py-2 px-2 t-faint">${i+1}</td><td class="py-2 px-2 t-muted">${r.time}</td><td class="py-2 px-2 t-accent accent-team font-medium">${r.team}</td><td class="py-2 px-2 t-accent">${r.member}</td>`;
     tr.onclick = ()=>{
       let t = data.teams.find(t=>t.name===r.team);
       let m = t && t.members.find(mem=>mem.name===r.member);
