@@ -117,6 +117,11 @@
             gap: 1.25rem;
             padding: 3.5rem 0 1.5rem;
             max-height: 100vh;
+            /* Without this the column shrink-wraps to its content, so
+               .wheel-box's `min(--wheel-size, 100%)` resolves 100% against a
+               parent that is itself sized by the wheel — and the wheel never
+               grows past its inline default. */
+            width: 100%;
         }
         .focus-content #wheelStage > * { margin-top: 0; } /* neutralize mt-6 */
         .focus-content .wheel-box { --wheel-size: min(58vh, 38rem); }
@@ -288,12 +293,22 @@
         const ctx = els.canvas.getContext('2d');
         const HUE_COUNT = 10;
         const HISTORY_LIMIT = 50;
+        // Label geometry, as fractions of the wheel. Sizing and drawing both
+        // read these so they can't drift apart.
+        const LABEL_OUTER_GAP = 0.035;  // of wheel size — clearance from the rim
+        const LABEL_INNER_STOP = 0.12;  // of radius — text never reaches the hub
+        const LABEL_WEDGE_FILL = 0.55;  // of the wedge's thickness
+        const LABEL_MAX = 0.16;         // of wheel size — cap on a 2-slice wheel
+        const LABEL_MIN = 7;            // px; below this, truncate instead
         const SAMPLE_ENTRIES = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace', 'Henry'];
 
         let entries = [];
         let spinHistory = [];
         let currentRotation = 0;
         let isSpinning = false;
+        // Recomputed only when the entries or the canvas change — never per
+        // frame, since a spin redraws at 60fps.
+        let labelSize = 14;
         // The last winner stays on the wheel so the class can see it sitting
         // under the pointer; it comes off at the start of the next spin.
         let pendingRemoval = null;
@@ -334,7 +349,68 @@
             els.canvas.width = Math.round(rect.width * dpr);
             els.canvas.height = Math.round(rect.height * dpr);
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            recomputeLabelSize();
             drawWheel();
+        }
+
+        // Where the labels live, in CSS pixels, for a given wheel size.
+        function labelGeometry(size) {
+            const radius = size / 2 - 6;
+            const outerEdge = radius - size * LABEL_OUTER_GAP;
+            const innerStop = radius * LABEL_INNER_STOP;
+            return { radius, outerEdge, innerStop, radialRoom: Math.max(1, outerEdge - innerStop) };
+        }
+
+        /* One size for the whole wheel — every slice has the same angle, so
+           mixed sizes would only reflect name length and look untidy.
+
+           Two things bound it: how much radial room the longest name needs,
+           and how thick the wedge is where that text sits. The wedge is widest
+           at the rim and narrows toward the hub, and a label only reaches as
+           far in as its own width — so short names on a few slices can be set
+           far larger than the thickness at the inner stop would suggest.
+
+           That coupling is circular (a bigger font reaches further in, where
+           there is less room), and iterating it oscillates rather than
+           settles. But "does this size fit" is monotone — every larger size is
+           at least as constrained — so a binary search converges on the
+           largest size that fits. */
+        function recomputeLabelSize() {
+            const size = els.canvas.width / (window.devicePixelRatio || 1);
+            if (!size || entries.length === 0) return;
+
+            const { outerEdge, innerStop, radialRoom } = labelGeometry(size);
+            const halfAngle = Math.min((2 * Math.PI) / entries.length, Math.PI) / 2;
+            const cap = size * LABEL_MAX;
+
+            // Text width scales linearly with font size, so one measurement at
+            // a reference size stands in for measuring at every candidate.
+            const REF = 100;
+            ctx.font = `bold ${REF}px Inter, sans-serif`;
+            const widestAtRef = entries.reduce(
+                (widest, name) => Math.max(widest, ctx.measureText(name).width), 0);
+
+            const fits = (fontSize) => {
+                const textWidth = (widestAtRef * fontSize) / REF;
+                if (textWidth > radialRoom) return false;
+                const innerReach = Math.max(innerStop, outerEdge - textWidth);
+                return fontSize <= 2 * innerReach * Math.sin(halfAngle) * LABEL_WEDGE_FILL;
+            };
+
+            if (fits(cap)) {
+                labelSize = cap;
+                return;
+            }
+
+            // Falls back to LABEL_MIN when even that doesn't fit; fitText then
+            // truncates, which beats an unreadable size.
+            let lo = LABEL_MIN;
+            let hi = cap;
+            for (let i = 0; i < 20; i++) {
+                const mid = (lo + hi) / 2;
+                if (fits(mid)) lo = mid; else hi = mid;
+            }
+            labelSize = lo;
         }
 
         // Trim to what actually fits, rather than assuming a fixed character count.
@@ -375,7 +451,7 @@
             }
 
             const sliceAngle = (2 * Math.PI) / entries.length;
-            const labelSize = Math.max(11, Math.min(20, size * 0.038));
+            const { outerEdge, radialRoom } = labelGeometry(size);
 
             entries.forEach((entry, i) => {
                 const startAngle = i * sliceAngle + currentRotation;
@@ -394,7 +470,6 @@
                 // rotate those an extra half turn and run the text inward instead.
                 const midAngle = startAngle + sliceAngle / 2;
                 const flipped = Math.cos(midAngle) < 0;
-                const inset = radius - size * 0.035;
 
                 ctx.save();
                 ctx.translate(center, center);
@@ -403,7 +478,7 @@
                 ctx.textBaseline = 'middle';
                 ctx.fillStyle = colors.label;
                 ctx.font = `bold ${labelSize}px Inter, sans-serif`;
-                ctx.fillText(fitText(entry, radius - size * 0.11), flipped ? -inset : inset, 0);
+                ctx.fillText(fitText(entry, radialRoom), flipped ? -outerEdge : outerEdge, 0);
                 ctx.restore();
             });
 
@@ -448,6 +523,7 @@
 
         function onEntriesChanged({ persist = true } = {}) {
             parseEntries();
+            recomputeLabelSize();
             drawWheel();
             refreshStatus();
             if (persist) saveSettings();
@@ -753,6 +829,12 @@
         onEntriesChanged({ persist: false });
         renderHistory();
         resizeCanvas();
+
+        // Debug/test surface, per assets/ktempo/app.js.
+        window.kwheel = {
+            labelSize: () => labelSize,
+            entryCount: () => entries.length,
+        };
     </script>
     <script src="assets/app.js"></script>
 </body>
