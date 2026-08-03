@@ -166,6 +166,24 @@ html.dark[data-app="kpomodoro"], html.dark .accent-kpomodoro {
     --ring: rgb(232 121 249 / 0.4);
 }
 
+/* ── KPresenterTopic · lime ── */
+html[data-app="kpresentertopic"], .accent-kpresentertopic {
+    --accent: #4d7c0f;
+    --accent-hover: #3f6212;
+    --accent-fg: #4d7c0f;
+    --accent-soft: #f7fee7;
+    --accent-border: #d9f99d;
+    --ring: rgb(77 124 15 / 0.35);
+}
+html.dark[data-app="kpresentertopic"], html.dark .accent-kpresentertopic {
+    --accent: #4d7c0f;
+    --accent-hover: #65a30d;
+    --accent-fg: #a3e635;
+    --accent-soft: rgb(163 230 53 / 0.15);
+    --accent-border: rgb(163 230 53 / 0.35);
+    --ring: rgb(163 230 53 / 0.4);
+}
+
 /* Launcher tiles: colored icon square per app */
 .k-tile {
     background-color: var(--accent-soft);

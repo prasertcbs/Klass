@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en" data-app="kpresentertopic">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Presenter–Topic Matcher – Klass</title>
+    <meta name="description" content="Randomly match presenters with topics, track every round, and export the results as CSV.">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <link rel="stylesheet" href="assets/accents.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <script src="assets/klass-util.js"></script>
+    <style>
+        html[data-app="kpresentertopic"] {
+            --presenter-color: #0072b2;
+            --presenter-soft: rgb(0 114 178 / 0.10);
+            --topic-color: #9a4d00;
+            --topic-soft: rgb(230 159 0 / 0.13);
+        }
+        html.dark[data-app="kpresentertopic"] {
+            --presenter-color: #56b4e9;
+            --presenter-soft: rgb(86 180 233 / 0.14);
+            --topic-color: #e69f00;
+            --topic-soft: rgb(230 159 0 / 0.14);
+        }
+        .match-stage {
+            display: grid;
+            gap: 1.5rem;
+            width: 100%;
+        }
+        .match-panel {
+            border-radius: 0.75rem;
+            min-width: 0;
+            padding: 1.25rem;
+            text-align: center;
+        }
+        .match-panel + .match-panel {
+            border-top: 1px solid var(--border);
+        }
+        .stage-label {
+            color: var(--muted);
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+        .stage-text {
+            font-size: clamp(2rem, 7vw, 5.5rem);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+            overflow-wrap: anywhere;
+        }
+        .topic-text {
+            font-size: clamp(1.6rem, 5vw, 3.75rem);
+        }
+        .presenter-panel { background: var(--presenter-soft); }
+        .topic-panel { background: var(--topic-soft); }
+        .presenter-color { color: var(--presenter-color); }
+        .topic-color { color: var(--topic-color); }
+        .presenter-card { border-top: 4px solid var(--presenter-color); }
+        .topic-card { border-top: 4px solid var(--topic-color); }
+        .flip {
+            animation: flip 0.35s ease-in-out;
+        }
+        @keyframes flip {
+            0% { transform: rotateX(0deg); opacity: 0.85; }
+            50% { transform: rotateX(85deg); opacity: 0.65; }
+            100% { transform: rotateX(0deg); opacity: 1; }
+        }
+        .winner {
+            animation:
+                pop 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+                pulse 0.5s ease-in-out 0.6s infinite alternate;
+        }
+        @keyframes pop {
+            0% { transform: scale(0.9); }
+            55% { transform: scale(1.06); }
+            100% { transform: scale(1); }
+        }
+        @keyframes pulse {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(1.04); opacity: 0.78; }
+        }
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5rem 1.5rem;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        .focus-overlay .match-stage {
+            max-width: 1100px;
+        }
+        .focus-overlay .stage-text {
+            font-size: clamp(3rem, 11vw, 9rem);
+        }
+        .focus-overlay .topic-text {
+            font-size: clamp(2rem, 7vw, 6rem);
+        }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .exit-focus {
+            position: absolute;
+            right: 16px;
+            top: 16px;
+            opacity: 0.55;
+        }
+        .exit-focus:hover { opacity: 1; }
+        .focus-actions {
+            bottom: 32px;
+            display: flex;
+            justify-content: center;
+            left: 0;
+            position: absolute;
+            right: 0;
+        }
+        @media (min-width: 768px) {
+            .match-stage {
+                align-items: center;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            }
+            .match-panel + .match-panel {
+                border-left: 1px solid var(--border);
+                border-top: 0;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay,
+            .flip,
+            .winner { animation: none; }
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="flex items-center gap-3">
+                    <img class="k-logo" src="icons/icon.svg" alt="">
+                    <span class="text-lg font-bold">Klass</span>
+                </a>
+                <span class="k-badge">Presenter + Topic</span>
+            </div>
+            <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                <i class="fa-solid fa-moon"></i>
+            </button>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Presenter–Topic Matcher</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Randomly pair each presenter with a topic, one round at a time.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+            <div id="stageBox" class="k-stage p-4 md:p-8 min-h-[300px] flex items-center justify-center">
+                <div class="match-stage">
+                    <div class="match-panel presenter-panel">
+                        <div class="stage-label">Presenter</div>
+                        <div id="presenterStageText" class="stage-text presenter-color">Ready</div>
+                    </div>
+                    <div class="match-panel topic-panel">
+                        <div class="stage-label">Topic</div>
+                        <div id="topicStageText" class="stage-text topic-text topic-color">Add two lists below</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="k-card presenter-card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="k-card-title presenter-color"><i class="fa-solid fa-users"></i>Presenters</h2>
+                        <div class="k-badge"><span id="presenterCount">0</span><span class="font-normal">remaining</span></div>
+                    </div>
+                    <textarea id="presenterTextarea" rows="7" placeholder="Enter one presenter per line..." class="k-input w-full resize-none font-mono">Eagle
+Lion
+Tiger
+Falcon
+Dolphin
+Wolf
+Panda
+Shark</textarea>
+                    <p class="k-status text-sm mt-3">Duplicate names are removed automatically.</p>
+                </div>
+
+                <div class="k-card topic-card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="k-card-title topic-color"><i class="fa-solid fa-lightbulb"></i>Topics</h2>
+                        <div class="k-badge"><span id="topicCount">0</span><span class="font-normal">remaining</span></div>
+                    </div>
+                    <textarea id="topicTextarea" rows="7" placeholder="Enter one topic per line..." class="k-input w-full resize-none font-mono">Artificial Intelligence (AI)
+Electric Vehicles (EV)
+Robotics
+Blockchain
+Quantum Computing
+Cybersecurity
+Internet of Things (IoT)
+Renewable Energy Technology</textarea>
+                    <p class="k-status text-sm mt-3">Repeat a topic to give it additional chances.</p>
+                </div>
+            </div>
+
+            <div class="k-card p-6">
+                <div class="flex flex-wrap gap-2">
+                    <button id="startBtn" class="k-btn k-btn-primary flex-1">
+                        <i class="fa-solid fa-play"></i>Start round
+                    </button>
+                    <button id="stopBtn" class="k-btn k-btn-secondary">
+                        <i class="fa-solid fa-stop"></i>Stop
+                    </button>
+                    <button id="undoBtn" class="k-btn k-btn-secondary" title="Undo the most recent match">
+                        <i class="fa-solid fa-rotate-left"></i>Undo
+                    </button>
+                    <button id="resetBtn" class="k-btn k-btn-danger" title="Reset all">
+                        <i class="fa-solid fa-trash"></i>Reset
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-5 mt-4 pt-4" style="border-top: 1px solid var(--border);">
+                    <div class="flex items-center gap-2">
+                        <label for="durationInput" class="k-label">Duration</label>
+                        <input type="number" id="durationInput" min="1" max="60" value="4" class="k-input w-16 text-center">
+                        <span class="k-label">s</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label for="speedInput" class="k-label">Speed</label>
+                        <input type="number" id="speedInput" min="30" max="300" step="10" value="300" class="k-input w-20 text-center">
+                        <span class="k-label">ms</span>
+                    </div>
+                    <span class="k-status text-sm">Space or Enter starts/stops a round</span>
+                </div>
+            </div>
+
+            <div class="k-card p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="k-card-title"><i class="fa-solid fa-clipboard-list"></i>Match Log</h2>
+                    <div class="k-badge"><span id="matchCount">0</span><span class="font-normal">matches</span></div>
+                </div>
+                <textarea id="logTextarea" readonly rows="8" placeholder="Completed matches will appear here..." class="k-input w-full resize-none font-mono"></textarea>
+                <div class="flex gap-2 mt-4">
+                    <button id="copyLogBtn" class="k-btn k-btn-secondary flex-1">
+                        <i class="fa-solid fa-copy"></i>Copy log
+                    </button>
+                    <button id="downloadLogBtn" class="k-btn k-btn-secondary flex-1">
+                        <i class="fa-solid fa-file-csv"></i>Download CSV
+                    </button>
+                </div>
+            </div>
+
+            <div id="statusBar" class="k-status text-center py-2" role="status">
+                Enter presenters and topics to begin
+            </div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 <a href="https://github.com/prasertcbs" target="_blank" rel="noopener" class="t-accent hover:underline">Prasert Kanawattanachai</a> &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div class="match-stage">
+            <div class="match-panel presenter-panel">
+                <div class="stage-label">Presenter</div>
+                <div id="focusPresenterText" class="stage-text presenter-color">Ready</div>
+            </div>
+            <div class="match-panel topic-panel">
+                <div class="stage-label">Topic</div>
+                <div id="focusTopicText" class="stage-text topic-text topic-color">—</div>
+            </div>
+        </div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+        <div class="focus-actions">
+            <button id="focusStopBtn" class="k-btn k-btn-secondary" hidden>
+                <i class="fa-solid fa-stop"></i>Stop
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const els = {
+            presenterTA: document.getElementById('presenterTextarea'),
+            topicTA: document.getElementById('topicTextarea'),
+            logTA: document.getElementById('logTextarea'),
+            duration: document.getElementById('durationInput'),
+            speed: document.getElementById('speedInput'),
+            start: document.getElementById('startBtn'),
+            stop: document.getElementById('stopBtn'),
+            undo: document.getElementById('undoBtn'),
+            reset: document.getElementById('resetBtn'),
+            copyLog: document.getElementById('copyLogBtn'),
+            downloadLog: document.getElementById('downloadLogBtn'),
+            presenterStage: document.getElementById('presenterStageText'),
+            topicStage: document.getElementById('topicStageText'),
+            focusOverlay: document.getElementById('focusOverlay'),
+            focusPresenter: document.getElementById('focusPresenterText'),
+            focusTopic: document.getElementById('focusTopicText'),
+            exitFocus: document.getElementById('exitFocusBtn'),
+            focusStop: document.getElementById('focusStopBtn'),
+            status: document.getElementById('statusBar'),
+            presenterCount: document.getElementById('presenterCount'),
+            topicCount: document.getElementById('topicCount'),
+            matchCount: document.getElementById('matchCount'),
+        };
+
+        const state = {
+            presenters: [],
+            topics: [],
+            matches: [],
+            spinning: false,
+            intervalId: null,
+            timeoutId: null,
+            lastMatch: null,
+            get durationMs() {
+                return clampNum(parseInt(els.duration.value, 10), 1, 60) * 1000;
+            },
+            get flipMs() {
+                return clampNum(parseInt(els.speed.value, 10), 30, 300);
+            },
+        };
+
+        function clampNum(n, min, max) {
+            n = isFinite(n) ? n : min;
+            return Math.min(Math.max(n, min), max);
+        }
+
+        function parseLines(value) {
+            return value
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean);
+        }
+
+        function readPools() {
+            const seenPresenters = new Set();
+            state.presenters = parseLines(els.presenterTA.value).filter((name) => {
+                const key = name.toLowerCase();
+                if (seenPresenters.has(key)) return false;
+                seenPresenters.add(key);
+                return true;
+            });
+            state.topics = parseLines(els.topicTA.value);
+            updateControls();
+        }
+
+        function writePools() {
+            els.presenterTA.value = state.presenters.join('\n');
+            els.topicTA.value = state.topics.join('\n');
+            updateControls();
+        }
+
+        function formatTimestamp(value) {
+            const date = value instanceof Date ? value : new Date(value);
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        }
+
+        function writeLog() {
+            els.logTA.value = state.matches
+                .map((match, index) => `${index + 1}. [${formatTimestamp(match.timestamp)}] ${match.presenter} → ${match.topic}`)
+                .join('\n');
+            updateControls();
+        }
+
+        function updateControls() {
+            const canMatch = state.presenters.length > 0 && state.topics.length > 0;
+            const hasMatches = state.matches.length > 0;
+            els.presenterCount.textContent = state.presenters.length;
+            els.topicCount.textContent = state.topics.length;
+            els.matchCount.textContent = state.matches.length;
+            els.start.disabled = state.spinning || !canMatch;
+            els.stop.disabled = !state.spinning;
+            els.focusStop.hidden = !state.spinning;
+            els.undo.disabled = state.spinning || !state.lastMatch;
+            els.copyLog.disabled = state.spinning || !hasMatches;
+            els.downloadLog.disabled = state.spinning || !hasMatches;
+        }
+
+        function setStatus(message) {
+            els.status.textContent = message;
+        }
+
+        function animateText(element, text, winner) {
+            element.textContent = text || '—';
+            element.classList.remove('flip', 'winner');
+            void element.offsetWidth;
+            element.classList.add(winner ? 'winner' : 'flip');
+        }
+
+        function renderStage(presenter, topic, winner = false) {
+            animateText(els.presenterStage, presenter, winner);
+            animateText(els.topicStage, topic, winner);
+            animateText(els.focusPresenter, presenter, winner);
+            animateText(els.focusTopic, topic, winner);
+        }
+
+        function enterFocus() {
+            els.focusOverlay.hidden = false;
+        }
+
+        function exitFocus() {
+            els.focusOverlay.hidden = true;
+        }
+
+        function toggleEditing(enabled) {
+            els.presenterTA.readOnly = !enabled;
+            els.topicTA.readOnly = !enabled;
+            els.duration.disabled = !enabled;
+            els.speed.disabled = !enabled;
+            els.reset.disabled = !enabled;
+        }
+
+        function randomIndex(list) {
+            return Math.floor(Math.random() * list.length);
+        }
+
+        function remainingSummary() {
+            const presenterLabel = state.presenters.length === 1 ? 'presenter' : 'presenters';
+            const topicLabel = state.topics.length === 1 ? 'topic' : 'topics';
+            return `${state.presenters.length} ${presenterLabel} and ${state.topics.length} ${topicLabel} remain.`;
+        }
+
+        function startRound() {
+            if (state.spinning) return;
+            readPools();
+            if (!state.presenters.length || !state.topics.length) {
+                setStatus('Enter at least one presenter and one topic.');
+                return;
+            }
+
+            state.spinning = true;
+            toggleEditing(false);
+            updateControls();
+            enterFocus();
+            setStatus('Matching presenter and topic...');
+
+            state.intervalId = setInterval(() => {
+                renderStage(
+                    state.presenters[randomIndex(state.presenters)],
+                    state.topics[randomIndex(state.topics)]
+                );
+            }, state.flipMs);
+
+            state.timeoutId = setTimeout(finalizeMatch, state.durationMs);
+        }
+
+        function finalizeMatch() {
+            if (!state.spinning) return;
+            clearInterval(state.intervalId);
+            clearTimeout(state.timeoutId);
+            state.intervalId = null;
+            state.timeoutId = null;
+
+            const presenterIndex = randomIndex(state.presenters);
+            const topicIndex = randomIndex(state.topics);
+            const match = {
+                presenter: state.presenters[presenterIndex],
+                topic: state.topics[topicIndex],
+                presenterIndex,
+                topicIndex,
+                timestamp: new Date(),
+            };
+
+            state.presenters.splice(presenterIndex, 1);
+            state.topics.splice(topicIndex, 1);
+            state.matches.push(match);
+            state.lastMatch = match;
+            state.spinning = false;
+
+            renderStage(match.presenter, match.topic, true);
+            writePools();
+            writeLog();
+            toggleEditing(true);
+            updateControls();
+
+            const remaining = remainingSummary();
+            if (!state.presenters.length || !state.topics.length) {
+                setStatus(`Matched ${match.presenter} with ${match.topic}. Matching complete; ${remaining}`);
+            } else {
+                setStatus(`Matched ${match.presenter} with ${match.topic}. ${remaining}`);
+            }
+        }
+
+        function stopRound() {
+            if (!state.spinning) return;
+            finalizeMatch();
+        }
+
+        function undoLastMatch() {
+            const match = state.lastMatch;
+            if (!match || state.spinning) return;
+
+            const presenterExists = state.presenters.some(
+                (name) => name.toLowerCase() === match.presenter.toLowerCase()
+            );
+            if (!presenterExists) {
+                state.presenters.splice(
+                    Math.min(match.presenterIndex, state.presenters.length),
+                    0,
+                    match.presenter
+                );
+            }
+            state.topics.splice(
+                Math.min(match.topicIndex, state.topics.length),
+                0,
+                match.topic
+            );
+            state.matches = state.matches.filter((entry) => entry !== match);
+            state.lastMatch = null;
+
+            writePools();
+            writeLog();
+            renderStage('Ready', 'Start the next round');
+            setStatus(`Restored ${match.presenter} and ${match.topic}.`);
+        }
+
+        function resetAll() {
+            if (!confirm('Clear both lists, the match log, and reset settings?')) return;
+            clearInterval(state.intervalId);
+            clearTimeout(state.timeoutId);
+            state.presenters = [];
+            state.topics = [];
+            state.matches = [];
+            state.spinning = false;
+            state.intervalId = null;
+            state.timeoutId = null;
+            state.lastMatch = null;
+            els.presenterTA.value = '';
+            els.topicTA.value = '';
+            els.duration.value = 4;
+            els.speed.value = 300;
+            exitFocus();
+            renderStage('Ready', 'Add two lists below');
+            writeLog();
+            updateControls();
+            toggleEditing(true);
+            setStatus('Reset complete.');
+        }
+
+        function copyLog() {
+            if (!state.matches.length) return;
+            navigator.clipboard
+                .writeText(els.logTA.value)
+                .then(() => setStatus('Match log copied to clipboard.'))
+                .catch(() => setStatus('Copy failed.'));
+        }
+
+        function downloadLog() {
+            if (!state.matches.length) {
+                setStatus('No matches to download.');
+                return;
+            }
+            const rows = [
+                ['Round', 'Timestamp', 'Presenter', 'Topic'],
+                ...state.matches.map((match, index) => [
+                    index + 1,
+                    formatTimestamp(match.timestamp),
+                    match.presenter,
+                    match.topic,
+                ]),
+            ];
+            const stamp = new Date().toISOString().slice(0, 10);
+            KlassUtil.downloadCsv(
+                `presenter-topic-matches-${stamp}.csv`,
+                KlassUtil.toCsv(rows)
+            );
+            setStatus('Match log downloaded as CSV.');
+        }
+
+        els.start.addEventListener('click', startRound);
+        els.stop.addEventListener('click', stopRound);
+        els.undo.addEventListener('click', undoLastMatch);
+        els.reset.addEventListener('click', resetAll);
+        els.copyLog.addEventListener('click', copyLog);
+        els.downloadLog.addEventListener('click', downloadLog);
+        els.exitFocus.addEventListener('click', exitFocus);
+        els.focusStop.addEventListener('click', stopRound);
+
+        for (const textarea of [els.presenterTA, els.topicTA]) {
+            textarea.addEventListener('input', () => {
+                readPools();
+                setStatus('Ready to match.');
+            });
+        }
+        els.duration.addEventListener('change', () => {
+            els.duration.value = clampNum(parseInt(els.duration.value, 10), 1, 60);
+        });
+        els.speed.addEventListener('change', () => {
+            els.speed.value = clampNum(parseInt(els.speed.value, 10), 30, 300);
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !els.focusOverlay.hidden) {
+                exitFocus();
+                return;
+            }
+            const active = document.activeElement;
+            const typing = active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT');
+            if (typing) return;
+            if (event.code === 'Space' || event.code === 'Enter') {
+                event.preventDefault();
+                if (state.spinning) stopRound();
+                else startRound();
+            }
+        });
+
+        readPools();
+        writeLog();
+    </script>
+    <script src="assets/app.js"></script>
+</body>
+</html>
