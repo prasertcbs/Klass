@@ -107,6 +107,7 @@
            from the zone it names (and collide once two thresholds sit close). */
         .meter-legend {
             display: flex;
+            flex-wrap: wrap;
             justify-content: center;
             gap: 1.25rem;
             margin-top: 0.625rem;
@@ -126,6 +127,74 @@
             height: 0.5rem;
             border-radius: 9999px;
             background-color: currentColor;
+        }
+
+        /* ---- Compact meter (Document PiP / in-page fallback) ---- */
+        .noise-compact-root {
+            position: relative;
+            box-sizing: border-box;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            background-color: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+        }
+        .compact-reading {
+            display: flex;
+            align-items: baseline;
+            gap: 0.75rem;
+            min-width: 0;
+            padding-right: 1.5rem;
+        }
+        .compact-level {
+            color: var(--band);
+            font-size: 1.75rem;
+            font-weight: 700;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+        .compact-status {
+            color: var(--band);
+            font-size: 0.875rem;
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .compact-meter { height: 1.5rem; }
+        .compact-close {
+            position: absolute;
+            top: 0.35rem;
+            right: 0.35rem;
+            width: 1.75rem;
+            height: 1.75rem;
+            border: 0;
+            border-radius: 0.375rem;
+            background: transparent;
+            color: var(--text-faint);
+            cursor: pointer;
+            opacity: 0.5;
+        }
+        .compact-close:hover {
+            background-color: var(--surface-2);
+            opacity: 1;
+        }
+        .noise-compact-overlay {
+            position: fixed;
+            top: 1.25rem;
+            right: 1.25rem;
+            z-index: 220;
+            width: min(22.5rem, calc(100vw - 2.5rem));
+            height: 7rem;
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.3);
+            overflow: hidden;
         }
 
         /* ---- History strip ---- */
@@ -223,6 +292,9 @@
                 <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode" title="Focus mode">
                     <i class="fa-solid fa-expand"></i>
                 </button>
+                <button id="compactBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Compact mode" aria-pressed="false" title="Compact mode (F9)">
+                    <i class="fa-solid fa-window-restore"></i>
+                </button>
                 <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
                     <i class="fa-solid fa-moon"></i>
                 </button>
@@ -256,9 +328,9 @@
                         <div id="alertMark" class="meter-mark alert" style="left: 70%"></div>
                     </div>
                     <div class="meter-legend">
-                        <span style="color: var(--lvl-quiet)">QUIET</span>
-                        <span style="color: var(--lvl-moderate)">MODERATE</span>
-                        <span style="color: var(--lvl-loud)">LOUD</span>
+                        <span id="quietLegend" style="color: var(--lvl-quiet)">QUIET 0–49</span>
+                        <span id="moderateLegend" style="color: var(--lvl-moderate)">MODERATE 50–69</span>
+                        <span id="loudLegend" style="color: var(--lvl-loud)">LOUD 70–100</span>
                     </div>
 
                     <div class="flex justify-center gap-3 mt-6">
@@ -278,25 +350,41 @@
 
             <div class="grid gap-6 lg:grid-cols-2">
                 <div class="k-card p-6">
-                    <h2 class="k-card-title mb-5"><i class="fa-solid fa-sliders"></i>Thresholds</h2>
+                    <h2 class="k-card-title mb-2"><i class="fa-solid fa-sliders"></i>Microphone levels</h2>
+                    <p id="thresholdHelp" class="k-status mb-5">Adjust the two boundaries to set the Quiet, Moderate, and Loud ranges.</p>
 
                     <div class="space-y-5">
                         <div>
                             <div class="flex justify-between items-center mb-2">
-                                <label for="warnThreshold" class="k-label">Warning level</label>
+                                <label for="warnThreshold" class="k-label" style="color: var(--lvl-moderate)">Moderate starts at</label>
                                 <span id="warnValue" class="text-sm font-bold" style="color: var(--lvl-moderate)">50</span>
                             </div>
-                            <input type="range" id="warnThreshold" min="10" max="95" value="50" class="k-range w-full">
-                            <div class="flex justify-between text-xs t-faint mt-1"><span>10</span><span>95</span></div>
+                            <input type="range" id="warnThreshold" min="10" max="90" value="50" class="k-range w-full" aria-describedby="thresholdHelp">
+                            <div class="flex justify-between text-xs t-faint mt-1"><span>10</span><span>90</span></div>
                         </div>
 
                         <div>
                             <div class="flex justify-between items-center mb-2">
-                                <label for="alertThreshold" class="k-label">Alert level</label>
+                                <label for="alertThreshold" class="k-label" style="color: var(--lvl-loud)">Loud starts at</label>
                                 <span id="alertValue" class="text-sm font-bold" style="color: var(--lvl-loud)">70</span>
                             </div>
-                            <input type="range" id="alertThreshold" min="10" max="95" value="70" class="k-range w-full">
-                            <div class="flex justify-between text-xs t-faint mt-1"><span>10</span><span>95</span></div>
+                            <input type="range" id="alertThreshold" min="15" max="95" value="70" class="k-range w-full" aria-describedby="thresholdHelp">
+                            <div class="flex justify-between text-xs t-faint mt-1"><span>15</span><span>95</span></div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2" aria-live="polite">
+                            <div class="k-stage p-3 text-center" style="border-color: var(--lvl-quiet); background-color: var(--lvl-quiet-soft);">
+                                <div class="text-xs font-bold" style="color: var(--lvl-quiet)">QUIET</div>
+                                <div id="quietRange" class="text-sm font-bold mt-1">0–49</div>
+                            </div>
+                            <div class="k-stage p-3 text-center" style="border-color: var(--lvl-moderate); background-color: var(--lvl-moderate-soft);">
+                                <div class="text-xs font-bold" style="color: var(--lvl-moderate)">MODERATE</div>
+                                <div id="moderateRange" class="text-sm font-bold mt-1">50–69</div>
+                            </div>
+                            <div class="k-stage p-3 text-center" style="border-color: var(--lvl-loud); background-color: var(--lvl-loud-soft);">
+                                <div class="text-xs font-bold" style="color: var(--lvl-loud)">LOUD</div>
+                                <div id="loudRange" class="text-sm font-bold mt-1">70–100</div>
+                            </div>
                         </div>
 
                         <div class="pt-4 space-y-3" style="border-top: 1px solid var(--border);">
@@ -351,21 +439,17 @@
             <div class="k-card p-6">
                 <h2 class="k-card-title mb-2"><i class="fa-solid fa-circle-info"></i>Level guide</h2>
                 <p class="k-status mb-5">These are <strong>relative</strong> microphone levels on a 0–100 scale, not calibrated decibels. Readings depend on your microphone and where the device sits, so set the thresholds by ear for your own room.</p>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div class="k-stage p-4 text-center" style="border-color: var(--lvl-quiet); background-color: var(--lvl-quiet-soft);">
-                        <div class="text-lg font-bold mb-1" style="color: var(--lvl-quiet)">0–25</div>
-                        <div class="text-xs t-muted">Near silent</div>
-                    </div>
-                    <div class="k-stage p-4 text-center" style="border-color: var(--lvl-quiet); background-color: var(--lvl-quiet-soft);">
-                        <div class="text-lg font-bold mb-1" style="color: var(--lvl-quiet)">25–45</div>
+                        <div id="quietGuideRange" class="text-lg font-bold mb-1" style="color: var(--lvl-quiet)">0–49</div>
                         <div class="text-xs t-muted">Quiet individual work</div>
                     </div>
                     <div class="k-stage p-4 text-center" style="border-color: var(--lvl-moderate); background-color: var(--lvl-moderate-soft);">
-                        <div class="text-lg font-bold mb-1" style="color: var(--lvl-moderate)">45–70</div>
+                        <div id="moderateGuideRange" class="text-lg font-bold mb-1" style="color: var(--lvl-moderate)">50–69</div>
                         <div class="text-xs t-muted">Group discussion</div>
                     </div>
                     <div class="k-stage p-4 text-center" style="border-color: var(--lvl-loud); background-color: var(--lvl-loud-soft);">
-                        <div class="text-lg font-bold mb-1" style="color: var(--lvl-loud)">70+</div>
+                        <div id="loudGuideRange" class="text-lg font-bold mb-1" style="color: var(--lvl-loud)">70–100</div>
                         <div class="text-xs t-muted">Too loud to teach over</div>
                     </div>
                 </div>
@@ -387,6 +471,22 @@
         <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
     </div>
 
+    <!-- Cloned into an always-on-top Document PiP window, or a page overlay fallback. -->
+    <template id="compactTemplate">
+        <div class="noise-compact-root bands band-idle">
+            <div class="compact-reading">
+                <span class="compact-level" data-compact-level>--</span>
+                <span class="compact-status" data-compact-status>Not listening</span>
+            </div>
+            <div class="meter-track compact-meter" data-compact-track>
+                <div class="meter-fill" data-compact-fill style="width: 0%"></div>
+                <div class="meter-mark warn" data-compact-warn style="left: 50%"></div>
+                <div class="meter-mark alert" data-compact-alert style="left: 70%"></div>
+            </div>
+            <button class="compact-close" data-compact-close aria-label="Exit compact mode" title="Exit compact mode">✕</button>
+        </div>
+    </template>
+
     <script>
         const $ = (id) => document.getElementById(id);
 
@@ -406,6 +506,15 @@
             alertThreshold: $('alertThreshold'),
             warnValue: $('warnValue'),
             alertValue: $('alertValue'),
+            quietRange: $('quietRange'),
+            moderateRange: $('moderateRange'),
+            loudRange: $('loudRange'),
+            quietLegend: $('quietLegend'),
+            moderateLegend: $('moderateLegend'),
+            loudLegend: $('loudLegend'),
+            quietGuideRange: $('quietGuideRange'),
+            moderateGuideRange: $('moderateGuideRange'),
+            loudGuideRange: $('loudGuideRange'),
             soundAlert: $('soundAlert'),
             visualAlert: $('visualAlert'),
             minLevel: $('minLevel'),
@@ -419,10 +528,13 @@
             focusOverlay: $('focusOverlay'),
             focusContent: $('focusContent'),
             exitFocusBtn: $('exitFocusBtn'),
+            compactBtn: $('compactBtn'),
+            compactTemplate: $('compactTemplate'),
         };
 
         const HISTORY_LENGTH = 90;
         const ALERT_COOLDOWN_MS = 2000;
+        const MIN_THRESHOLD_GAP = 5;
 
         let audioCtx = null;
         let analyser = null;
@@ -432,6 +544,12 @@
         let animationId = null;
         let isRunning = false;
         let lastAlertTime = 0;
+        let lastLevel = null;
+
+        let isCompactMode = false;
+        let pipWindow = null;
+        let compactOverlay = null;
+        let compactEls = null;
 
         let history = [];
         let minLevel = Infinity;
@@ -464,6 +582,19 @@
             if (Number.isFinite(saved.alert)) els.alertThreshold.value = saved.alert;
             if (typeof saved.sound === 'boolean') els.soundAlert.checked = saved.sound;
             if (typeof saved.flash === 'boolean') els.visualAlert.checked = saved.flash;
+
+            // Older or manually edited saved values may overlap. Keep all three
+            // ranges usable before reflecting them in the UI.
+            if (Number(els.alertThreshold.value) - Number(els.warnThreshold.value) < MIN_THRESHOLD_GAP) {
+                els.alertThreshold.value = Math.min(
+                    Number(els.alertThreshold.max),
+                    Number(els.warnThreshold.value) + MIN_THRESHOLD_GAP
+                );
+                els.warnThreshold.value = Math.max(
+                    Number(els.warnThreshold.min),
+                    Number(els.alertThreshold.value) - MIN_THRESHOLD_GAP
+                );
+            }
         }
 
         /* ---- Thresholds ---- */
@@ -473,21 +604,45 @@
         function syncThresholds() {
             const warn = Number(els.warnThreshold.value);
             const alert = Number(els.alertThreshold.value);
+            const quietText = `0–${warn - 1}`;
+            const moderateText = `${warn}–${alert - 1}`;
+            const loudText = `${alert}–100`;
+
             els.warnValue.textContent = warn;
             els.alertValue.textContent = alert;
+            els.quietRange.textContent = quietText;
+            els.moderateRange.textContent = moderateText;
+            els.loudRange.textContent = loudText;
+            els.quietLegend.textContent = `QUIET ${quietText}`;
+            els.moderateLegend.textContent = `MODERATE ${moderateText}`;
+            els.loudLegend.textContent = `LOUD ${loudText}`;
+            els.quietGuideRange.textContent = quietText;
+            els.moderateGuideRange.textContent = moderateText;
+            els.loudGuideRange.textContent = loudText;
             els.warnMark.style.left = `${warn}%`;
             els.alertMark.style.left = `${alert}%`;
             els.meterTrack.style.setProperty('--warn-pct', `${warn}%`);
             els.meterTrack.style.setProperty('--alert-pct', `${alert}%`);
+
+            if (compactEls) {
+                compactEls.warnMark.style.left = `${warn}%`;
+                compactEls.alertMark.style.left = `${alert}%`;
+                compactEls.track.style.setProperty('--warn-pct', `${warn}%`);
+                compactEls.track.style.setProperty('--alert-pct', `${alert}%`);
+                renderCompact(lastLevel, lastLevel === null ? 'idle' : bandFor(lastLevel));
+            }
+
+            // Re-colour existing samples immediately when a boundary changes.
+            renderHistory();
         }
 
         // The alert level must stay above the warning level; nudge whichever
         // slider the user is not currently dragging.
         els.warnThreshold.addEventListener('input', () => {
-            if (Number(els.warnThreshold.value) >= Number(els.alertThreshold.value)) {
+            if (Number(els.alertThreshold.value) - Number(els.warnThreshold.value) < MIN_THRESHOLD_GAP) {
                 els.alertThreshold.value = Math.min(
                     Number(els.alertThreshold.max),
-                    Number(els.warnThreshold.value) + 5
+                    Number(els.warnThreshold.value) + MIN_THRESHOLD_GAP
                 );
             }
             syncThresholds();
@@ -495,10 +650,10 @@
         });
 
         els.alertThreshold.addEventListener('input', () => {
-            if (Number(els.alertThreshold.value) <= Number(els.warnThreshold.value)) {
+            if (Number(els.alertThreshold.value) - Number(els.warnThreshold.value) < MIN_THRESHOLD_GAP) {
                 els.warnThreshold.value = Math.max(
                     Number(els.warnThreshold.min),
-                    Number(els.alertThreshold.value) - 5
+                    Number(els.alertThreshold.value) - MIN_THRESHOLD_GAP
                 );
             }
             syncThresholds();
@@ -583,6 +738,8 @@
             els.dial.classList.remove('alert-glow');
             els.meterFill.style.width = '0%';
             setBand('idle');
+            lastLevel = null;
+            renderCompact(null, 'idle');
             setStatus('Stopped. The microphone has been released.');
         }
 
@@ -617,7 +774,9 @@
             els.meterFill.style.width = `${level}%`;
 
             const band = bandFor(level);
+            lastLevel = level;
             setBand(band);
+            renderCompact(level, band);
 
             if (band === 'loud') {
                 els.statusText.textContent = 'Too loud';
@@ -656,6 +815,10 @@
             history.push(level);
             if (history.length > HISTORY_LENGTH) history.shift();
 
+            renderHistory();
+        }
+
+        function renderHistory() {
             // Opacity is an inline style, not a Tailwind class — utility classes
             // built from a runtime value are never generated by the compiler.
             els.history.innerHTML = history
@@ -716,6 +879,117 @@
             beep(600, 0.2);
         }
 
+        /* ---- Compact mode ---- */
+
+        function makeCompactContent() {
+            const root = els.compactTemplate.content.firstElementChild.cloneNode(true);
+            const compact = {
+                root,
+                level: root.querySelector('[data-compact-level]'),
+                status: root.querySelector('[data-compact-status]'),
+                track: root.querySelector('[data-compact-track]'),
+                fill: root.querySelector('[data-compact-fill]'),
+                warnMark: root.querySelector('[data-compact-warn]'),
+                alertMark: root.querySelector('[data-compact-alert]'),
+            };
+            root.querySelector('[data-compact-close]').addEventListener('click', closeCompact);
+            return compact;
+        }
+
+        function renderCompact(level, band) {
+            if (!compactEls) return;
+
+            compactEls.root.classList.remove('band-idle', 'band-quiet', 'band-moderate', 'band-loud');
+            compactEls.root.classList.add(`band-${band}`);
+            compactEls.level.textContent = level === null ? '--' : level;
+            compactEls.fill.style.width = level === null ? '0%' : `${level}%`;
+            compactEls.status.textContent = level === null
+                ? 'Not listening'
+                : band === 'loud' ? 'Too loud' : band === 'moderate' ? 'Getting loud' : 'Quiet';
+            compactEls.status.classList.toggle('alert-pulse', band === 'loud');
+        }
+
+        async function toggleCompactMode() {
+            if (isCompactMode) {
+                closeCompact();
+                return;
+            }
+            if (!els.focusOverlay.hidden) exitFocus();
+
+            const content = makeCompactContent();
+
+            if (window.documentPictureInPicture) {
+                try {
+                    pipWindow = await window.documentPictureInPicture.requestWindow({ width: 360, height: 120 });
+                    copyStyles(pipWindow.document);
+                    pipWindow.document.documentElement.classList.toggle(
+                        'dark',
+                        document.documentElement.classList.contains('dark')
+                    );
+                    pipWindow.document.body.style.margin = '0';
+                    pipWindow.document.body.appendChild(content.root);
+                    compactEls = { ...content, doc: pipWindow.document };
+                    isCompactMode = true;
+                    els.compactBtn.setAttribute('aria-pressed', 'true');
+                    pipWindow.addEventListener('pagehide', onCompactWindowClosed, { once: true });
+                    syncThresholds();
+                    renderCompact(lastLevel, lastLevel === null ? 'idle' : bandFor(lastLevel));
+                    return;
+                } catch {
+                    pipWindow = null;
+                    // The browser denied PiP; use the in-page top-right fallback.
+                }
+            }
+
+            compactOverlay = document.createElement('div');
+            compactOverlay.className = 'noise-compact-overlay';
+            compactOverlay.appendChild(content.root);
+            document.body.appendChild(compactOverlay);
+            compactEls = { ...content, doc: null };
+            isCompactMode = true;
+            els.compactBtn.setAttribute('aria-pressed', 'true');
+            syncThresholds();
+            renderCompact(lastLevel, lastLevel === null ? 'idle' : bandFor(lastLevel));
+        }
+
+        function copyStyles(doc) {
+            for (const sheet of document.styleSheets) {
+                try {
+                    const rules = Array.from(sheet.cssRules).map((rule) => rule.cssText).join('\n');
+                    const style = doc.createElement('style');
+                    style.textContent = rules;
+                    doc.head.appendChild(style);
+                } catch {
+                    if (!sheet.href) continue;
+                    const link = doc.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = sheet.href;
+                    doc.head.appendChild(link);
+                }
+            }
+        }
+
+        function onCompactWindowClosed() {
+            pipWindow = null;
+            compactEls = null;
+            isCompactMode = false;
+            els.compactBtn.setAttribute('aria-pressed', 'false');
+        }
+
+        function closeCompact() {
+            if (pipWindow) {
+                pipWindow.close();
+                pipWindow = null;
+            }
+            if (compactOverlay) {
+                compactOverlay.remove();
+                compactOverlay = null;
+            }
+            compactEls = null;
+            isCompactMode = false;
+            els.compactBtn.setAttribute('aria-pressed', 'false');
+        }
+
         /* ---- Focus mode ---- */
 
         // The stage is reparented (not cloned) so the running meter keeps
@@ -723,6 +997,7 @@
         const stageHome = els.stage.parentElement;
 
         function enterFocus() {
+            if (isCompactMode) closeCompact();
             els.focusContent.appendChild(els.stage);
             els.focusOverlay.hidden = false;
         }
@@ -734,6 +1009,7 @@
 
         els.focusBtn.addEventListener('click', enterFocus);
         els.exitFocusBtn.addEventListener('click', exitFocus);
+        els.compactBtn.addEventListener('click', toggleCompactMode);
 
         /* ---- Wiring ---- */
 
@@ -746,9 +1022,18 @@
                 exitFocus();
                 return;
             }
+            if (e.key === 'Escape' && isCompactMode) {
+                closeCompact();
+                return;
+            }
             // Don't hijack the spacebar while a slider or field has focus.
             const active = document.activeElement;
             if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;
+            if (e.key === 'F9') {
+                e.preventDefault();
+                toggleCompactMode();
+                return;
+            }
             if (e.code === 'Space') {
                 e.preventDefault();
                 isRunning ? stop() : start();
@@ -757,6 +1042,14 @@
 
         restoreSettings();
         syncThresholds();
+
+        new MutationObserver(() => {
+            if (!compactEls?.doc) return;
+            compactEls.doc.documentElement.classList.toggle(
+                'dark',
+                document.documentElement.classList.contains('dark')
+            );
+        }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     </script>
     <script src="assets/app.js"></script>
 </body>
