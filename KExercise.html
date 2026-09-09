@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en" data-app="kexercise">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interval Timer – Klass</title>
+    <meta name="description" content="Run repeating exercise intervals — n sets of 10, 15 or 30 seconds with a rest at the end of each set.">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <link rel="stylesheet" href="assets/accents.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <style>
+        /* Get-ready / Work / Rest colors, independent of the red accent — the
+           phase must read blue/red/green whatever the accent is. Same
+           local-custom-property approach as KPomodoro's modes. */
+        .modes {
+            --mode-prep: #1d4ed8;
+            --mode-prep-soft: rgb(29 78 216 / 0.10);
+            --mode-work: #b91c1c;
+            --mode-work-soft: rgb(185 28 28 / 0.10);
+            --mode-rest: #047857;
+            --mode-rest-soft: rgb(4 120 87 / 0.10);
+        }
+        html.dark .modes {
+            --mode-prep: #60a5fa;
+            --mode-prep-soft: rgb(96 165 250 / 0.12);
+            --mode-work: #f87171;
+            --mode-work-soft: rgb(248 113 113 / 0.12);
+            --mode-rest: #34d399;
+            --mode-rest-soft: rgb(52 211 153 / 0.12);
+        }
+
+        /* The active phase, set on #timerStage by JS. */
+        .mode-prep { --mode: var(--mode-prep); --mode-soft: var(--mode-prep-soft); }
+        .mode-work { --mode: var(--mode-work); --mode-soft: var(--mode-work-soft); }
+        .mode-rest { --mode: var(--mode-rest); --mode-soft: var(--mode-rest-soft); }
+        /* Finished reads as complete, so it borrows the rest green. */
+        .mode-done { --mode: var(--mode-rest); --mode-soft: var(--mode-rest-soft); }
+
+        /* ---- Timer ring ---- */
+        #timerStage { --ring-size: 18rem; }
+        .ring-box {
+            position: relative;
+            width: min(var(--ring-size), 100%);
+            aspect-ratio: 1;
+            margin-inline: auto;
+            cursor: pointer;
+            /* Double-clicking toggles focus mode; without this it also selects
+               the digits. */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .ring-svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+        .ring-track { stroke: var(--border); }
+        /* No CSS transition: intervals here are as short as 10s, so an eased
+           1s transition would visibly lag the value it animates toward. */
+        .ring-progress { stroke: var(--mode); }
+        .ring-readout {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.2rem;
+        }
+        .ring-phase {
+            font-size: calc(var(--ring-size) * 0.06);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--mode);
+        }
+        .ring-time {
+            font-size: calc(var(--ring-size) * 0.26);
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -0.02em;
+            font-variant-numeric: tabular-nums;
+            color: var(--mode);
+        }
+        /* A M:SS readout is twice as wide as a bare seconds count, so it needs
+           to be a size smaller to stay inside the ring. */
+        .ring-time.is-clock { font-size: calc(var(--ring-size) * 0.19); }
+        .ring-label {
+            font-size: calc(var(--ring-size) * 0.055);
+            color: var(--text-faint);
+        }
+
+        /* ---- Set dots ---- */
+        .dot {
+            width: 0.75rem;
+            height: 0.75rem;
+            border-radius: 9999px;
+            background-color: var(--surface-2);
+            border: 1px solid var(--border-strong);
+        }
+        .dot.done {
+            background-color: var(--mode-work);
+            border-color: var(--mode-work);
+        }
+        .dot.current {
+            border-color: var(--mode-work);
+            box-shadow: 0 0 0 3px var(--mode-work-soft);
+        }
+
+        /* ---- Plan timeline ---- */
+        /* One proportional segment per phase, so "10 sets of 10s with 5s rests"
+           is legible as a shape before the timer is ever started. */
+        .timeline {
+            display: flex;
+            gap: 2px;
+            height: 0.75rem;
+            border-radius: 0.375rem;
+            overflow: hidden;
+            background-color: var(--surface-2);
+        }
+        .seg { min-width: 2px; opacity: 0.35; }
+        .seg.prep { background-color: var(--mode-prep); }
+        .seg.work { background-color: var(--mode-work); }
+        .seg.rest { background-color: var(--mode-rest); }
+        .seg.past { opacity: 0.7; }
+        .seg.current { opacity: 1; }
+
+        /* ---- Preset chips ---- */
+        /* Static classes only: interpolating Tailwind class names at runtime
+           produces names the compiler never sees. */
+        .chip {
+            padding: 0.4rem 0.85rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-strong);
+            background-color: var(--surface);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.875rem;
+            font-variant-numeric: tabular-nums;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        }
+        .chip:hover { background-color: var(--surface-2); color: var(--text); }
+        .chip.is-active {
+            background-color: var(--accent-soft);
+            border-color: var(--accent-border);
+            color: var(--accent-fg);
+        }
+
+        .num-input { width: 5.5rem; text-align: center; font-variant-numeric: tabular-nums; }
+
+        /* ---- Projector focus mode (same overlay pattern as the other tools) ---- */
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .focus-content {
+            width: min(1400px, 92vw);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .focus-content #timerStage {
+            --ring-size: min(58vh, 38rem);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.25rem;
+            padding: 2rem 0 1.5rem;
+            max-height: 100vh;
+            /* Without this the column shrink-wraps to its widest child, so
+               .ring-box's `min(--ring-size, 100%)` resolves against that
+               instead of the overlay — the ring stays small while the digits,
+               sized from --ring-size, overflow it. */
+            width: 100%;
+        }
+        .focus-content #timerStage > * { margin-top: 0; } /* neutralize mt-* */
+        .focus-content .timeline-wrap { width: min(900px, 80%); }
+        .exit-focus {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            opacity: 0.5;
+        }
+        .exit-focus:hover { opacity: 1; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay { animation: none; }
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col modes">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="flex items-center gap-3">
+                    <img class="k-logo" src="icons/icon.svg" alt="">
+                    <span class="text-lg font-bold">Klass</span>
+                </a>
+                <span class="k-badge">Interval Timer</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Fullscreen focus mode (F)" title="Fullscreen focus mode (F / F11)">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Interval Timer</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Run repeating exercise intervals — say 10 sets of 10 seconds, with a 5 second pause at the end of each set.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+
+            <div class="k-card p-6">
+                <div id="timerStage" class="mode-work">
+                    <div class="ring-box">
+                        <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">
+                            <circle class="ring-track" cx="50" cy="50" r="45" fill="none" stroke-width="6"/>
+                            <circle id="ringProgress" class="ring-progress" cx="50" cy="50" r="45" fill="none"
+                                    stroke-width="6" stroke-linecap="round" stroke-dasharray="282.74" stroke-dashoffset="0"/>
+                        </svg>
+                        <div class="ring-readout">
+                            <div id="phaseLabel" class="ring-phase">Work</div>
+                            <div id="timeDisplay" class="ring-time">10</div>
+                            <div id="setLabel" class="ring-label">Set 1 of 10</div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap justify-center gap-2 mt-6">
+                        <button id="startBtn" class="k-btn k-btn-primary">
+                            <i class="fa-solid fa-play"></i><span id="startLabel">Start</span>
+                        </button>
+                        <button id="pauseBtn" class="k-btn k-btn-secondary hidden">
+                            <i class="fa-solid fa-pause"></i>Pause
+                        </button>
+                        <button id="resetBtn" class="k-btn k-btn-secondary">
+                            <i class="fa-solid fa-rotate-left"></i>Reset
+                        </button>
+                        <button id="skipBtn" class="k-btn k-btn-secondary">
+                            <i class="fa-solid fa-forward"></i>Skip
+                        </button>
+                    </div>
+
+                    <div class="flex justify-center items-center gap-3 mt-6 flex-wrap">
+                        <span class="k-label">Sets</span>
+                        <span id="setDots" class="flex flex-wrap justify-center gap-1.5"></span>
+                        <span id="setCount" class="k-badge">0/10</span>
+                    </div>
+
+                    <div class="timeline-wrap mt-6 w-full">
+                        <div id="timeline" class="timeline" aria-hidden="true"></div>
+                        <div class="flex justify-between text-xs t-faint mt-2">
+                            <span id="elapsedLabel">0:00 elapsed</span>
+                            <span id="remainingLabel">2:25 left</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="statusBar" class="k-status mt-6 pt-4 text-center" style="border-top: 1px solid var(--border);" role="status">
+                    Press Start to begin. Space starts and pauses; F or a double-click on the dial opens focus mode.
+                </div>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="k-card p-6">
+                    <h2 class="k-card-title mb-5"><i class="fa-solid fa-sliders"></i>Workout</h2>
+
+                    <div class="space-y-5">
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="workInput" class="k-label">Interval</label>
+                                <span id="workValue" class="text-sm font-bold" style="color: var(--mode-work)">10 sec</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button class="chip" data-preset="work" data-seconds="10">10s</button>
+                                <button class="chip" data-preset="work" data-seconds="15">15s</button>
+                                <button class="chip" data-preset="work" data-seconds="30">30s</button>
+                                <button class="chip" data-preset="work" data-seconds="45">45s</button>
+                                <button class="chip" data-preset="work" data-seconds="60">60s</button>
+                                <span class="flex items-center gap-2">
+                                    <input type="number" id="workInput" class="k-input num-input" min="1" max="3600" step="1" value="10" aria-label="Interval seconds">
+                                    <span class="k-label">sec</span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="restInput" class="k-label">Pause after each set</label>
+                                <span id="restValue" class="text-sm font-bold" style="color: var(--mode-rest)">5 sec</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button class="chip" data-preset="rest" data-seconds="0">None</button>
+                                <button class="chip" data-preset="rest" data-seconds="5">5s</button>
+                                <button class="chip" data-preset="rest" data-seconds="10">10s</button>
+                                <button class="chip" data-preset="rest" data-seconds="15">15s</button>
+                                <button class="chip" data-preset="rest" data-seconds="30">30s</button>
+                                <span class="flex items-center gap-2">
+                                    <input type="number" id="restInput" class="k-input num-input" min="0" max="3600" step="1" value="5" aria-label="Pause seconds">
+                                    <span class="k-label">sec</span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="setsInput" class="k-label">Sets</label>
+                                <span id="setsValue" class="text-sm font-bold t-accent">10 sets</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button class="chip" data-preset="sets" data-seconds="5">5</button>
+                                <button class="chip" data-preset="sets" data-seconds="8">8</button>
+                                <button class="chip" data-preset="sets" data-seconds="10">10</button>
+                                <button class="chip" data-preset="sets" data-seconds="12">12</button>
+                                <button class="chip" data-preset="sets" data-seconds="20">20</button>
+                                <input type="number" id="setsInput" class="k-input num-input" min="1" max="99" step="1" value="10" aria-label="Number of sets">
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <label for="prepInput" class="k-label">Get ready</label>
+                                <span id="prepValue" class="text-sm font-bold" style="color: var(--mode-prep)">5 sec</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button class="chip" data-preset="prep" data-seconds="0">None</button>
+                                <button class="chip" data-preset="prep" data-seconds="3">3s</button>
+                                <button class="chip" data-preset="prep" data-seconds="5">5s</button>
+                                <button class="chip" data-preset="prep" data-seconds="10">10s</button>
+                                <span class="flex items-center gap-2">
+                                    <input type="number" id="prepInput" class="k-input num-input" min="0" max="300" step="1" value="5" aria-label="Get ready seconds">
+                                    <span class="k-label">sec</span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="pt-4 space-y-3" style="border-top: 1px solid var(--border);">
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="restAfterLast" class="k-check">
+                                Pause after the final set too
+                            </label>
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="soundEnabled" checked class="k-check">
+                                Sound at each interval change
+                            </label>
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="tickEnabled" checked class="k-check">
+                                Beep the last 3 seconds
+                            </label>
+                            <label class="flex items-center gap-3 k-label cursor-pointer">
+                                <input type="checkbox" id="keepAwake" checked class="k-check">
+                                Keep the screen awake while running
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="k-card p-6">
+                    <h2 class="k-card-title mb-5"><i class="fa-solid fa-list-check"></i>This workout</h2>
+
+                    <p id="planSummary" class="k-status mb-5">10 sets of 10 sec, 5 sec pause between sets.</p>
+
+                    <div class="grid grid-cols-2 gap-3 mb-5">
+                        <div class="k-stage p-4 text-center">
+                            <div id="totalTime" class="text-2xl font-bold t-accent">2:25</div>
+                            <div class="text-xs t-faint">Total time</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="totalSets" class="text-2xl font-bold t-accent">10</div>
+                            <div class="text-xs t-faint">Sets</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="totalWork" class="text-2xl font-bold" style="color: var(--mode-work)">1:40</div>
+                            <div class="text-xs t-faint">Working</div>
+                        </div>
+                        <div class="k-stage p-4 text-center">
+                            <div id="totalRest" class="text-2xl font-bold" style="color: var(--mode-rest)">0:45</div>
+                            <div class="text-xs t-faint">Pausing</div>
+                        </div>
+                    </div>
+
+                    <div class="pt-4" style="border-top: 1px solid var(--border);">
+                        <div class="k-label mb-2">Shortcuts</div>
+                        <ul class="text-sm t-faint space-y-1.5">
+                            <li><span class="k-badge">Space</span> start / pause</li>
+                            <li><span class="k-badge">S</span> skip the current interval</li>
+                            <li><span class="k-badge">R</span> reset the workout</li>
+                            <li><span class="k-badge">F</span> fullscreen focus mode</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 <a href="https://github.com/prasertcbs" target="_blank" rel="noopener" class="t-accent hover:underline">Prasert Kanawattanachai</a> &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <!-- Projector focus mode: #timerStage is moved in here while open -->
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div id="focusContent" class="focus-content"></div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+
+        const els = {
+            stage: $('timerStage'),
+            ringBox: document.querySelector('.ring-box'),
+            ringProgress: $('ringProgress'),
+            phaseLabel: $('phaseLabel'),
+            timeDisplay: $('timeDisplay'),
+            setLabel: $('setLabel'),
+            startBtn: $('startBtn'),
+            startLabel: $('startLabel'),
+            pauseBtn: $('pauseBtn'),
+            resetBtn: $('resetBtn'),
+            skipBtn: $('skipBtn'),
+            setDots: $('setDots'),
+            setCount: $('setCount'),
+            timeline: $('timeline'),
+            elapsedLabel: $('elapsedLabel'),
+            remainingLabel: $('remainingLabel'),
+            statusBar: $('statusBar'),
+            workInput: $('workInput'),
+            restInput: $('restInput'),
+            setsInput: $('setsInput'),
+            prepInput: $('prepInput'),
+            workValue: $('workValue'),
+            restValue: $('restValue'),
+            setsValue: $('setsValue'),
+            prepValue: $('prepValue'),
+            restAfterLast: $('restAfterLast'),
+            soundEnabled: $('soundEnabled'),
+            tickEnabled: $('tickEnabled'),
+            keepAwake: $('keepAwake'),
+            planSummary: $('planSummary'),
+            totalTime: $('totalTime'),
+            totalSets: $('totalSets'),
+            totalWork: $('totalWork'),
+            totalRest: $('totalRest'),
+            focusBtn: $('focusBtn'),
+            focusOverlay: $('focusOverlay'),
+            focusContent: $('focusContent'),
+            exitFocusBtn: $('exitFocusBtn'),
+        };
+
+        const CIRCUMFERENCE = 2 * Math.PI * 45; // r=45 in the SVG viewBox
+        // 100ms, not KPomodoro's 250ms: a 10-second interval sweeps the ring
+        // ten times faster, so a coarser tick reads as a stutter.
+        const TICK_MS = 100;
+        const BASE_TITLE = 'Interval Timer – Klass';
+        const SETTINGS_KEY = 'kexercise.settings.v1';
+
+        const LIMITS = {
+            work: { min: 1, max: 3600, fallback: 10 },
+            rest: { min: 0, max: 3600, fallback: 5 },
+            sets: { min: 1, max: 99, fallback: 10 },
+            prep: { min: 0, max: 300, fallback: 5 },
+        };
+
+        const PHASES = {
+            prep: { label: 'Get ready', cls: 'mode-prep' },
+            work: { label: 'Work', cls: 'mode-work' },
+            rest: { label: 'Pause', cls: 'mode-rest' },
+        };
+
+        // Injectable clock so tests can advance time; production is Date.now.
+        let now = () => Date.now();
+
+        // The workout is a flat list of phases built from the settings, so
+        // "which interval comes next" is a lookup rather than a state machine.
+        let plan = [];
+        let idx = 0;
+        let phaseMs = 0;      // full length of the current phase
+        let remainingMs = 0;  // authoritative while paused/idle
+        let endTime = null;   // epoch ms — the source of truth while running
+        let running = false;
+        let finished = false;
+        let tickId = null;
+        let lastBeepSecond = null;
+        let wakeLock = null;
+
+        /* ---- Settings ---------------------------------------------------- */
+
+        function readNumber(which) {
+            const { min, max, fallback } = LIMITS[which];
+            const raw = Number(els[which + 'Input'].value);
+            if (!Number.isFinite(raw)) return fallback;
+            return Math.min(max, Math.max(min, Math.round(raw)));
+        }
+
+        const settings = () => ({
+            work: readNumber('work'),
+            rest: readNumber('rest'),
+            sets: readNumber('sets'),
+            prep: readNumber('prep'),
+            restAfterLast: els.restAfterLast.checked,
+        });
+
+        function saveSettings() {
+            try {
+                localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+                    ...settings(),
+                    sound: els.soundEnabled.checked,
+                    tick: els.tickEnabled.checked,
+                    awake: els.keepAwake.checked,
+                }));
+            } catch { /* storage may be unavailable; settings are non-essential */ }
+        }
+
+        function restoreSettings() {
+            let saved = {};
+            try {
+                saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+            } catch { /* ignore malformed state */ }
+
+            ['work', 'rest', 'sets', 'prep'].forEach((which) => {
+                if (Number.isFinite(saved[which])) els[which + 'Input'].value = saved[which];
+            });
+            if (typeof saved.restAfterLast === 'boolean') els.restAfterLast.checked = saved.restAfterLast;
+            if (typeof saved.sound === 'boolean') els.soundEnabled.checked = saved.sound;
+            if (typeof saved.tick === 'boolean') els.tickEnabled.checked = saved.tick;
+            if (typeof saved.awake === 'boolean') els.keepAwake.checked = saved.awake;
+        }
+
+        /* ---- The plan ---------------------------------------------------- */
+
+        function buildPlan() {
+            const s = settings();
+            const out = [];
+            if (s.prep > 0) out.push({ kind: 'prep', ms: s.prep * 1000, set: 0 });
+            for (let i = 1; i <= s.sets; i++) {
+                out.push({ kind: 'work', ms: s.work * 1000, set: i });
+                // The pause belongs to the set that just finished, so the last
+                // one is dropped unless it was asked for — nobody wants the
+                // workout to end on an idle countdown.
+                if (s.rest > 0 && (i < s.sets || s.restAfterLast)) {
+                    out.push({ kind: 'rest', ms: s.rest * 1000, set: i });
+                }
+            }
+            return out;
+        }
+
+        const totalPlanMs = () => plan.reduce((sum, p) => sum + p.ms, 0);
+        const currentPhase = () => plan[idx] || null;
+
+        // Everything still ahead, including what is left of the current phase.
+        function remainingPlanMs() {
+            if (finished) return 0;
+            let ms = remainingMs;
+            for (let i = idx + 1; i < plan.length; i++) ms += plan[i].ms;
+            return ms;
+        }
+
+        function setsCompleted() {
+            if (finished) return settings().sets;
+            // A set counts once its work interval is over — the pause that
+            // follows belongs to a set already done.
+            let done = 0;
+            for (let i = 0; i < idx; i++) {
+                if (plan[i].kind === 'work') done++;
+            }
+            return done;
+        }
+
+        /* ---- Formatting -------------------------------------------------- */
+
+        function formatClock(ms) {
+            const total = Math.max(0, Math.ceil(ms / 1000));
+            const m = Math.floor(total / 60);
+            const s = total % 60;
+            return `${m}:${String(s).padStart(2, '0')}`;
+        }
+
+        // Under a minute the bare seconds count is what reads across a room;
+        // longer intervals need the M:SS the eye expects.
+        function formatPhase(ms) {
+            const total = Math.max(0, Math.ceil(ms / 1000));
+            return total < 60 ? String(total) : formatClock(ms);
+        }
+
+        /* ---- Rendering --------------------------------------------------- */
+
+        function setStatus(message) {
+            els.statusBar.textContent = message;
+        }
+
+        // "set 3" / "pause" / "lead-in" — how the phase is spoken, as opposed
+        // to PHASES[].label, which is what the dial shows.
+        function phaseNoun(phase) {
+            if (!phase) return 'workout';
+            if (phase.kind === 'work') return `set ${phase.set}`;
+            return phase.kind === 'rest' ? 'the pause' : 'the lead-in';
+        }
+
+        function render() {
+            const text = finished ? '0' : formatPhase(remainingMs);
+            els.timeDisplay.textContent = text;
+            els.timeDisplay.classList.toggle('is-clock', text.includes(':'));
+
+            const progress = phaseMs > 0 ? remainingMs / phaseMs : 0;
+            els.ringProgress.style.strokeDashoffset =
+                CIRCUMFERENCE * (1 - (finished ? 1 : Math.max(0, Math.min(1, progress))));
+
+            const left = remainingPlanMs();
+            els.remainingLabel.textContent = finished ? 'done' : `${formatClock(left)} left`;
+            els.elapsedLabel.textContent = `${formatClock(totalPlanMs() - left)} elapsed`;
+
+            // Only hijack the tab title while actually counting down.
+            const phase = currentPhase();
+            document.title = running && phase
+                ? `${text} · ${PHASES[phase.kind].label} – Klass`
+                : BASE_TITLE;
+        }
+
+        function renderPhase() {
+            const phase = currentPhase();
+            const total = settings().sets;
+
+            els.stage.className = finished || !phase ? 'mode-done' : PHASES[phase.kind].cls;
+            els.phaseLabel.textContent = finished || !phase ? 'Finished' : PHASES[phase.kind].label;
+
+            if (finished || !phase) {
+                els.setLabel.textContent = `${total} of ${total} sets done`;
+            } else if (phase.kind === 'prep') {
+                els.setLabel.textContent = `${total} ${total === 1 ? 'set' : 'sets'} coming up`;
+            } else {
+                els.setLabel.textContent = `Set ${phase.set} of ${total}`;
+            }
+
+            els.startBtn.classList.toggle('hidden', running);
+            els.pauseBtn.classList.toggle('hidden', !running);
+            els.startBtn.disabled = finished;
+            els.skipBtn.disabled = finished;
+
+            renderDots();
+            renderTimeline();
+        }
+
+        function renderDots() {
+            const total = settings().sets;
+            const done = setsCompleted();
+            const phase = currentPhase();
+            const active = !finished && phase && phase.kind !== 'prep' ? phase.set : 0;
+            els.setDots.innerHTML = Array.from({ length: total }, (_, i) => {
+                const n = i + 1;
+                const cls = n <= done ? ' done' : (n === active ? ' current' : '');
+                return `<span class="dot${cls}"></span>`;
+            }).join('');
+            els.setCount.textContent = `${done}/${total}`;
+        }
+
+        function renderTimeline() {
+            const total = totalPlanMs() || 1;
+            els.timeline.innerHTML = plan.map((p, i) => {
+                const state = finished || i < idx ? ' past' : (i === idx ? ' current' : '');
+                return `<div class="seg ${p.kind}${state}" style="flex:${(p.ms / total) * 1000}"></div>`;
+            }).join('');
+        }
+
+        function renderSummary() {
+            const s = settings();
+            const workMs = s.sets * s.work * 1000;
+            const restMs = Math.max(0, totalPlanMs() - workMs - s.prep * 1000);
+
+            els.workValue.textContent = `${s.work} sec`;
+            els.restValue.textContent = s.rest === 0 ? 'none' : `${s.rest} sec`;
+            els.setsValue.textContent = `${s.sets} ${s.sets === 1 ? 'set' : 'sets'}`;
+            els.prepValue.textContent = s.prep === 0 ? 'none' : `${s.prep} sec`;
+
+            els.totalTime.textContent = formatClock(totalPlanMs());
+            els.totalSets.textContent = s.sets;
+            els.totalWork.textContent = formatClock(workMs);
+            els.totalRest.textContent = formatClock(restMs);
+
+            const restText = s.rest === 0
+                ? 'no pause in between'
+                : `${s.rest} sec pause ${s.restAfterLast ? 'after every set' : 'between sets'}`;
+            const prepText = s.prep === 0 ? '' : ` Starts with a ${s.prep} sec lead-in.`;
+            els.planSummary.textContent =
+                `${s.sets} ${s.sets === 1 ? 'set' : 'sets'} of ${s.work} sec, ${restText}.${prepText}`;
+
+            // Chips light up only when they match what the inputs actually say.
+            document.querySelectorAll('.chip').forEach((chip) => {
+                chip.classList.toggle('is-active',
+                    s[chip.dataset.preset] === Number(chip.dataset.seconds));
+            });
+        }
+
+        function renderAll() {
+            renderSummary();
+            renderPhase();
+            render();
+        }
+
+        /* ---- Timing ------------------------------------------------------ */
+        /* Remaining time is derived from an absolute end timestamp rather than
+           accumulated ticks: background tabs get throttled, so a tick-counting
+           timer loses real time whenever the tab is hidden. */
+
+        function startTicking() {
+            stopTicking();
+            tickId = setInterval(tick, TICK_MS);
+        }
+
+        function stopTicking() {
+            if (tickId) {
+                clearInterval(tickId);
+                tickId = null;
+            }
+        }
+
+        function tick() {
+            if (!running || endTime === null) return;
+
+            let over = now() - endTime;
+            if (over >= 0) {
+                // A throttled tab can hide several whole intervals; walk the
+                // plan until the overshoot lands inside a phase, then cue only
+                // the one actually on screen rather than every phase skipped.
+                while (true) {
+                    idx++;
+                    if (idx >= plan.length) {
+                        finish();
+                        return;
+                    }
+                    phaseMs = plan[idx].ms;
+                    if (over < phaseMs) {
+                        remainingMs = phaseMs - over;
+                        endTime = now() + remainingMs;
+                        break;
+                    }
+                    over -= phaseMs;
+                }
+                lastBeepSecond = null;
+                playPhaseCue(plan[idx].kind);
+                renderPhase();
+            } else {
+                remainingMs = -over;
+            }
+
+            maybeBeep();
+            render();
+        }
+
+        // The 3-2-1 run-in, fired once per whole second so a 100ms tick does
+        // not stack ten beeps on the same number.
+        function maybeBeep() {
+            if (!running || !els.tickEnabled.checked) return;
+            const secs = Math.ceil(remainingMs / 1000);
+            if (secs > 3 || secs < 1 || secs === lastBeepSecond) return;
+            lastBeepSecond = secs;
+            beep(660, 70, 0.15);
+        }
+
+        function start() {
+            if (running || finished || !plan.length) return;
+            if (remainingMs <= 0) remainingMs = phaseMs;
+
+            unlockAudio();
+            running = true;
+            endTime = now() + remainingMs;
+            lastBeepSecond = null;
+            startTicking();
+            requestWakeLock();
+            renderPhase();
+            render();
+            setStatus(`${PHASES[currentPhase().kind].label} — ${formatClock(remainingPlanMs())} to go.`);
+        }
+
+        function pause() {
+            if (!running) return;
+            remainingMs = Math.max(0, endTime - now());
+            running = false;
+            endTime = null;
+            stopTicking();
+            releaseWakeLock();
+            els.startLabel.textContent = 'Resume';
+            renderPhase();
+            render();
+            setStatus(`Paused with ${formatClock(remainingMs)} left of ${phaseNoun(currentPhase())}.`);
+        }
+
+        // Rebuilds from the current settings, so it doubles as "apply the
+        // numbers I just changed".
+        function reset({ announce = true } = {}) {
+            stopTicking();
+            releaseWakeLock();
+            running = false;
+            finished = false;
+            endTime = null;
+            lastBeepSecond = null;
+            plan = buildPlan();
+            idx = 0;
+            phaseMs = plan.length ? plan[0].ms : 0;
+            remainingMs = phaseMs;
+            els.startLabel.textContent = 'Start';
+            renderAll();
+            if (announce) {
+                const s = settings();
+                setStatus(`Ready — ${s.sets} ${s.sets === 1 ? 'set' : 'sets'} of ${s.work} sec, ${formatClock(totalPlanMs())} in total.`);
+            }
+        }
+
+        function skip() {
+            if (finished || !plan.length) return;
+            const skipped = phaseNoun(currentPhase());
+            idx++;
+            if (idx >= plan.length) {
+                finish();
+                setStatus('Skipped to the end — workout finished.');
+                return;
+            }
+            phaseMs = plan[idx].ms;
+            remainingMs = phaseMs;
+            lastBeepSecond = null;
+            if (running) endTime = now() + remainingMs;
+            renderPhase();
+            render();
+            setStatus(`Skipped ${skipped} — on to ${phaseNoun(currentPhase())}.`);
+        }
+
+        function finish() {
+            stopTicking();
+            releaseWakeLock();
+            running = false;
+            finished = true;
+            endTime = null;
+            remainingMs = 0;
+            els.startLabel.textContent = 'Start';
+            playChime();
+            renderPhase();
+            render();
+            const s = settings();
+            setStatus(`Workout complete — ${s.sets} ${s.sets === 1 ? 'set' : 'sets'} of ${s.work} sec. Press Reset to run it again.`);
+        }
+
+        /* ---- Sound ------------------------------------------------------- */
+
+        // Two sources on purpose: short synthesized beeps mark the many
+        // interval changes without wearing the room out, and the suite's
+        // chime.mp3 is kept for the one moment that matters — the finish.
+        const chime = new Audio('chime.mp3');
+        chime.preload = 'auto';
+        let audioCtx = null;
+        let audioUnlocked = false;
+
+        // Autoplay policy: prime both sources during a user gesture so later
+        // interval changes can sound without one of their own.
+        function unlockAudio() {
+            if (audioUnlocked) return;
+            audioUnlocked = true;
+
+            const volume = chime.volume;
+            chime.volume = 0;
+            chime.play()
+                .then(() => { chime.pause(); chime.currentTime = 0; chime.volume = volume; })
+                .catch(() => { chime.volume = volume; });
+
+            try {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (Ctx) audioCtx = new Ctx();
+            } catch { /* beeps are optional */ }
+        }
+
+        function beep(frequency, durationMs, gain = 0.2) {
+            if (!audioCtx) return;
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const amp = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = frequency;
+                // Ramp the tail off: a hard stop on a sine clicks.
+                amp.gain.setValueAtTime(gain, audioCtx.currentTime);
+                amp.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + durationMs / 1000);
+                osc.connect(amp).connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + durationMs / 1000);
+            } catch { /* never let audio break the timer */ }
+        }
+
+        function playPhaseCue(kind) {
+            if (!els.soundEnabled.checked) return;
+            if (kind === 'work') {
+                // Two rising beeps for "go" — distinct from the single low
+                // note that means stop, even across a noisy room.
+                beep(880, 120, 0.25);
+                setTimeout(() => beep(1180, 160, 0.25), 150);
+            } else {
+                beep(440, 220, 0.22);
+            }
+        }
+
+        function playChime() {
+            if (!els.soundEnabled.checked) return;
+            try {
+                chime.currentTime = 0;
+                chime.play().catch(() => {});
+            } catch { /* never let audio break the timer */ }
+        }
+
+        /* ---- Screen wake lock -------------------------------------------- */
+
+        // A phone propped up for a workout dims mid-set otherwise. Unsupported
+        // browsers simply carry on without it.
+        function requestWakeLock() {
+            if (!els.keepAwake.checked || !navigator.wakeLock || wakeLock) return;
+            navigator.wakeLock.request('screen')
+                .then((lock) => {
+                    wakeLock = lock;
+                    lock.addEventListener('release', () => { wakeLock = null; });
+                })
+                .catch(() => { wakeLock = null; });
+        }
+
+        function releaseWakeLock() {
+            if (!wakeLock) return;
+            const lock = wakeLock;
+            wakeLock = null;
+            lock.release().catch(() => {});
+        }
+
+        /* ---- Focus mode -------------------------------------------------- */
+
+        // Reparented, not cloned, so the running timer keeps driving the same
+        // nodes and the controls come with it.
+        const stageHome = els.stage.parentElement;
+
+        function enterFocus() {
+            els.focusContent.appendChild(els.stage);
+            els.focusOverlay.hidden = false;
+            // Real fullscreen, as KTempo does: the overlay alone still leaves
+            // the browser's tabs and address bar on the projector. Callers are
+            // all user gestures, which the Fullscreen API requires.
+            document.documentElement.requestFullscreen?.().catch(() => {});
+        }
+
+        function exitFocus() {
+            stageHome.insertBefore(els.stage, stageHome.firstChild);
+            els.focusOverlay.hidden = true;
+            if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+        }
+
+        // Esc and F11 are handled by the browser itself, which only tells us
+        // afterwards — so the overlay follows the fullscreen state rather than
+        // the other way round, or it would be left open over a windowed page.
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && !els.focusOverlay.hidden) exitFocus();
+        });
+
+        function toggleFocus() {
+            els.focusOverlay.hidden ? enterFocus() : exitFocus();
+        }
+
+        els.focusBtn.addEventListener('click', enterFocus);
+        els.exitFocusBtn.addEventListener('click', exitFocus);
+
+        // The dial is the only part of the stage with no interactive children,
+        // so a double-click here can't also land on Start/Pause.
+        els.ringBox.addEventListener('dblclick', toggleFocus);
+
+        /* ---- Wiring ------------------------------------------------------ */
+
+        els.startBtn.addEventListener('click', start);
+        els.pauseBtn.addEventListener('click', pause);
+        els.resetBtn.addEventListener('click', () => reset());
+        els.skipBtn.addEventListener('click', skip);
+
+        // Changing the workout mid-run would resize an interval already
+        // counting down, so the new numbers are held until the next reset.
+        function settingsChanged() {
+            saveSettings();
+            if (running) {
+                renderSummary();
+                setStatus('Workout changed — press Reset to run it with the new numbers.');
+            } else {
+                reset();
+            }
+        }
+
+        ['work', 'rest', 'sets', 'prep'].forEach((which) => {
+            const input = els[which + 'Input'];
+            input.addEventListener('input', settingsChanged);
+            // 'change' as well: an out-of-range or empty field snaps back to a
+            // usable number once the field is left, not while it is being typed.
+            input.addEventListener('change', () => {
+                input.value = readNumber(which);
+                settingsChanged();
+            });
+        });
+
+        document.querySelectorAll('.chip').forEach((chip) => {
+            chip.addEventListener('click', () => {
+                els[chip.dataset.preset + 'Input'].value = chip.dataset.seconds;
+                settingsChanged();
+            });
+        });
+
+        els.restAfterLast.addEventListener('change', settingsChanged);
+        [els.soundEnabled, els.tickEnabled].forEach((box) =>
+            box.addEventListener('change', saveSettings));
+        els.keepAwake.addEventListener('change', () => {
+            saveSettings();
+            if (els.keepAwake.checked && running) requestWakeLock();
+            else if (!els.keepAwake.checked) releaseWakeLock();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !els.focusOverlay.hidden) {
+                exitFocus();
+                return;
+            }
+            const active = document.activeElement;
+            if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                running ? pause() : start();
+                return;
+            }
+            // Modifier check keeps Ctrl/Cmd+F (browser find), Ctrl+R (reload)
+            // and Ctrl+S (save) working.
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            const key = e.key.toLowerCase();
+            if (key === 's') {
+                e.preventDefault();
+                skip();
+            } else if (key === 'r') {
+                e.preventDefault();
+                reset();
+            } else if (e.key === 'F11' || key === 'f') {
+                // F11 too, so the browser's own fullscreen key opens the dial
+                // rather than fullscreening the ordinary page.
+                e.preventDefault();
+                toggleFocus();
+            }
+        });
+
+        // A throttled tab can freeze the interval entirely; one tick against the
+        // wall clock on return resyncs, including phases that already ended.
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden || !running) return;
+            tick();
+            // A wake lock is dropped whenever the page is hidden, so it has to
+            // be taken again on the way back.
+            requestWakeLock();
+        });
+
+        /* ---- Boot -------------------------------------------------------- */
+
+        restoreSettings();
+        reset({ announce: false });
+
+        // Debug/test surface, per assets/ktempo/app.js.
+        window.kexercise = {
+            setClock(fn) { now = fn || (() => Date.now()); },
+            tick,
+            plan: () => plan,
+            state: () => ({ idx, phase: currentPhase(), running, finished, remainingMs, phaseMs }),
+        };
+    </script>
+    <script src="assets/app.js"></script>
+</body>
+</html>

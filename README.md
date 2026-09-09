@@ -1,6 +1,6 @@
 # Klass – Classroom Tools
 
-An installable, offline-capable PWA with ten classroom tools sharing one design system (light/dark, per-tool accents):
+An installable, offline-capable PWA with eleven classroom tools sharing one design system (light/dark, per-tool accents):
 
 - **KRandom** – random name picker for classroom participation
 - **KWheel** – spinning prize wheel: the celebratory, projector-friendly way to pick a name
@@ -10,12 +10,13 @@ An installable, offline-capable PWA with ten classroom tools sharing one design 
 - **KSeatingChart** – randomized seating charts that maximize spacing
 - **KTempo** – countdown timer (deadline / quick / presets), clock mode, focus & compact (PiP) modes, time's-up chime
 - **KPomodoro** – repeating work/break study cycle with session tracking and daily stats
+- **KExercise** – exercise interval timer: n sets of 10/15/30-second intervals with a pause after each set
 - **KQR** – giant projector-sized QR code for sharing links with the room
 - **KNoise** – live classroom noise meter with warning/alert thresholds and focus mode
 
 All dependencies (Tailwind, Font Awesome, Inter font) are vendored under `assets/` — no CDN, fully offline after first visit.
 
-Office-suite-style identity: each app has its own accent color (KRandom emerald, KAssignTeam rose, KPresenter orange, KPresenterTopic lime, KSeatingChart cyan, KTempo blue, KQR purple, KNoise teal, KWheel amber, KPomodoro fuchsia) defined in `assets/accents.css` via a `data-app` attribute on `<html>`, while the chrome stays neutral and the Klass logo stays indigo.
+Office-suite-style identity: each app has its own accent color (KRandom emerald, KAssignTeam rose, KPresenter orange, KPresenterTopic lime, KSeatingChart cyan, KTempo blue, KQR purple, KNoise teal, KWheel amber, KPomodoro fuchsia, KExercise red) defined in `assets/accents.css` via a `data-app` attribute on `<html>`, while the chrome stays neutral and the Klass logo stays indigo.
 
 ## Run locally
 

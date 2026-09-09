@@ -184,6 +184,24 @@ html.dark[data-app="kpresentertopic"], html.dark .accent-kpresentertopic {
     --ring: rgb(163 230 53 / 0.4);
 }
 
+/* ── KExercise · red ── */
+html[data-app="kexercise"], .accent-kexercise {
+    --accent: #b91c1c;
+    --accent-hover: #991b1b;
+    --accent-fg: #b91c1c;
+    --accent-soft: #fef2f2;
+    --accent-border: #fecaca;
+    --ring: rgb(185 28 28 / 0.35);
+}
+html.dark[data-app="kexercise"], html.dark .accent-kexercise {
+    --accent: #b91c1c;
+    --accent-hover: #dc2626;
+    --accent-fg: #f87171;
+    --accent-soft: rgb(248 113 113 / 0.15);
+    --accent-border: rgb(248 113 113 / 0.35);
+    --ring: rgb(248 113 113 / 0.4);
+}
+
 /* Launcher tiles: colored icon square per app */
 .k-tile {
     background-color: var(--accent-soft);
