@@ -224,6 +224,10 @@
 
                     <div class="mt-4 pt-4 space-y-3" style="border-top: 1px solid var(--border);">
                         <label class="flex items-center gap-2 k-label cursor-pointer">
+                            <input type="checkbox" id="fillWheel" class="k-check">
+                            Fill the wheel: repeat every number equally to make about 38 pockets
+                        </label>
+                        <label class="flex items-center gap-2 k-label cursor-pointer">
                             <input type="checkbox" id="noRepeat" checked class="k-check">
                             Don't repeat numbers: remove each drawn number on the next spin
                         </label>
@@ -279,6 +283,7 @@
             countDown: $('countDown'),
             countUp: $('countUp'),
             countPresets: $('countPresets'),
+            fillWheel: $('fillWheel'),
             noRepeat: $('noRepeat'),
             soundEnabled: $('soundEnabled'),
             remainingCount: $('remainingCount'),
@@ -609,7 +614,7 @@
         /* ---- State ------------------------------------------------------- */
 
         let count = DEFAULT_COUNT;
-        let numbers = [];          // the pockets, in order; shrinks when not repeating
+        let numbers = [];          // the number on each pocket, in order; a number may fill several
         let drawn = [];            // most recent first
         let pendingRemoval = null; // last number stays under the ball until the next spin
         let sim = null;
@@ -620,31 +625,97 @@
 
         const fullRange = (n) => Array.from({ length: n }, (_, i) => i + 1);
 
-        /* Pocket order around the wheel: shuffled, and no two consecutive
-           numbers side by side (the ring wraps, so first and last count as
-           neighbours too). About one shuffle in eight passes, so a few hundred
-           tries always find one. The fewest-clash layout is kept as a fallback
-           for n ≤ 4, where every layout has a clash. */
-        const clashes = (order) => order.reduce((total, v, i) =>
-            total + (order.length > 1 && Math.abs(v - order[(i + 1) % order.length]) === 1 ? 1 : 0), 0);
+        const TARGET_POCKETS = 38;  // "Fill the wheel" aims for a casino-sized wheel
 
-        function arrangePockets(values) {
-            let best = null;
-            let bestClashes = Infinity;
-            for (let attempt = 0; attempt < 500 && bestClashes > 0; attempt++) {
-                const order = [...values];
-                for (let i = order.length - 1; i > 0; i--) {
-                    const j = Math.floor(cryptoRandom() * (i + 1));
-                    [order[i], order[j]] = [order[j], order[i]];
-                }
-                const c = clashes(order);
-                if (c < bestClashes) {
-                    best = order;
-                    bestClashes = c;
-                }
+        const distinctNumbers = () => [...new Set(numbers)];
+
+        // Pockets per number. Every number gets the same share, so the odds
+        // stay equal; with 25 numbers left that is 2 each (50 pockets), the
+        // most the wheel ever holds, well inside the 60 a ball fits.
+        const copiesFor = (distinct) =>
+            els.fillWheel.checked && distinct >= 2 ? Math.max(1, Math.round(TARGET_POCKETS / distinct)) : 1;
+
+        // Neighbouring pockets that are the same or consecutive numbers. The
+        // ring wraps, so by default the last pocket neighbours the first.
+        function clashes(order, wrap = true) {
+            let total = 0;
+            const pairs = wrap ? order.length : order.length - 1;
+            for (let i = 0; order.length > 1 && i < pairs; i++) {
+                if (Math.abs(order[i] - order[(i + 1) % order.length]) <= 1) total++;
             }
-            return best;
+            return total;
         }
+
+        function shuffled(values) {
+            const out = [...values];
+            for (let i = out.length - 1; i > 0; i--) {
+                const j = Math.floor(cryptoRandom() * (i + 1));
+                [out[i], out[j]] = [out[j], out[i]];
+            }
+            return out;
+        }
+
+        /* How bunched a layout's repeated numbers are: 0 when every number's
+           pockets sit a full round apart, growing sharply as two copies close in. */
+        function bunching(order, copies) {
+            if (copies < 2) return 0;
+            const round = order.length / copies;
+            const last = new Map();
+            let total = 0;
+            // Twice round the ring, so gaps across the seam count too.
+            for (let i = 0; i < order.length * 2; i++) {
+                const v = order[i % order.length];
+                if (last.has(v) && i - last.get(v) < round) total += (round - (i - last.get(v))) ** 2;
+                last.set(v, i);
+            }
+            return total / 2;
+        }
+
+        /* Pocket order around the wheel: shuffled, with no same or consecutive
+           numbers side by side. Copies go on in rounds, each round placing
+           every number once; of a batch of shuffles, each round takes the one
+           that joins cleanly onto the last and keeps copies furthest apart.
+           Whole layouts are retried and the best kept (fewest clashes, then
+           least bunching). With 4 or fewer numbers every layout has a clash,
+           so the one with the fewest is kept. */
+        function arrangePockets(values, copies = 1) {
+            const n = values.length;
+            let best = null;
+            let bestScore = Infinity;
+            const attempts = copies > 1 && n > 4 ? 40 : 200;
+            for (let attempt = 0; attempt < attempts; attempt++) {
+                const order = [];
+                const lastAt = new Map();
+                for (let round = 0; round < copies; round++) {
+                    let pick = null;
+                    let pickScore = Infinity;
+                    for (let t = 0; t < 60; t++) {
+                        const candidate = shuffled(values);
+                        let score = clashes([...order.slice(-1), ...candidate], false) * 1e6;
+                        for (let j = 0; j < n && round > 0; j++) {
+                            const gap = order.length + j - lastAt.get(candidate[j]);
+                            if (gap < n) score += (n - gap) ** 2;
+                        }
+                        if (score < pickScore) {
+                            pick = candidate;
+                            pickScore = score;
+                        }
+                        if (score === 0) break;
+                    }
+                    pick.forEach((v, j) => lastAt.set(v, order.length + j));
+                    order.push(...pick);
+                }
+                const score = clashes(order) * 1e6 + bunching(order, copies);
+                if (score < bestScore) {
+                    best = order;
+                    bestScore = score;
+                }
+                if (score === 0) break;
+            }
+            return best ?? [];
+        }
+
+        const layoutWheel = (values) => arrangePockets(values, copiesFor(values.length));
         const clampCount = (value) =>
             Math.min(MAX_COUNT, Math.max(MIN_COUNT, Math.round(Number(value) || DEFAULT_COUNT)));
 
@@ -925,19 +996,16 @@
             if (spinning) return;
 
             if (pendingRemoval !== null && els.noRepeat.checked) {
-                const index = numbers.indexOf(pendingRemoval);
-                // Removing a pocket can leave two consecutive numbers side by
-                // side, so the rest are re-laid out; every pocket resizes
-                // anyway when the count changes.
-                if (index !== -1) {
-                    numbers.splice(index, 1);
-                    numbers = arrangePockets(numbers);
+                // All its pockets come off, and the rest are re-laid out: the
+                // share per number may change, and every pocket resizes anyway.
+                if (numbers.includes(pendingRemoval)) {
+                    numbers = layoutWheel(distinctNumbers().filter((v) => v !== pendingRemoval));
                 }
             }
             pendingRemoval = null;
             winningPocket = -1;
 
-            if (numbers.length < 2) {
+            if (distinctNumbers().length < 2) {
                 saveSettings();
                 renderCounts();
                 const coast = sim.omega;
@@ -999,6 +1067,7 @@
             els.countDown.disabled = disabled;
             els.countUp.disabled = disabled;
             els.countPresets.querySelectorAll('.chip').forEach((chip) => { chip.disabled = disabled; });
+            els.fillWheel.disabled = disabled;
         }
 
         /* ---- Numbers, history, status ------------------------------------ */
@@ -1008,7 +1077,7 @@
         }
 
         function remainingAfterPending() {
-            return numbers.length - (pendingRemoval !== null && els.noRepeat.checked ? 1 : 0);
+            return distinctNumbers().length - (pendingRemoval !== null && els.noRepeat.checked ? 1 : 0);
         }
 
         function renderCounts() {
@@ -1035,13 +1104,13 @@
         function resetWheel(newCount = count) {
             if (spinning) return;
             count = clampCount(newCount);
-            numbers = arrangePockets(fullRange(count));
+            numbers = layoutWheel(fullRange(count));
             drawn = [];
             pendingRemoval = null;
             winningPocket = -1;
             // The rotor coasts on; only the pockets change.
             const coast = sim ? sim.omega : 0;
-            sim = createIdle(count, sim ? sim.phi : 0);
+            sim = createIdle(numbers.length, sim ? sim.phi : 0);
             sim.omega = coast;
             els.winnerDisplay.hidden = true;
             els.winnerNumber.classList.remove('winner');
@@ -1050,7 +1119,24 @@
             draw();
             ensureRunning();
             saveSettings();
-            setStatus(`Numbers 1–${count} on the wheel. Press Spin, or hit Space.`);
+            setStatus(`Numbers 1–${count} on ${numbers.length} pockets. Press Spin, or hit Space.`);
+        }
+
+        // Fill the wheel toggled: same numbers still in play, new layout.
+        function relayoutWheel() {
+            if (spinning) return;
+            numbers = layoutWheel(distinctNumbers());
+            winningPocket = -1;
+            const coast = sim.omega;
+            sim = createIdle(numbers.length, sim.phi);
+            sim.omega = coast;
+            draw();
+            ensureRunning();
+            saveSettings();
+            const share = numbers.length / distinctNumbers().length;
+            setStatus(share > 1
+                ? `Each number now fills ${share} pockets (${numbers.length} in all).`
+                : `One pocket per number (${numbers.length} in all).`);
         }
 
         /* ---- Settings ---------------------------------------------------- */
@@ -1065,6 +1151,7 @@
                     drawn,
                     pendingRemoval,
                     noRepeat: els.noRepeat.checked,
+                    fill: els.fillWheel.checked,
                     sound: els.soundEnabled.checked,
                 }));
             } catch { /* storage may be unavailable; settings are non-essential */ }
@@ -1077,21 +1164,26 @@
             } catch { /* ignore malformed state */ }
 
             if (typeof saved.noRepeat === 'boolean') els.noRepeat.checked = saved.noRepeat;
+            if (typeof saved.fill === 'boolean') els.fillWheel.checked = saved.fill;
             if (typeof saved.sound === 'boolean') els.soundEnabled.checked = saved.sound;
 
             count = clampCount(saved.count);
             const isInRange = (v) => Number.isInteger(v) && v >= 1 && v <= count;
             const savedNumbers = Array.isArray(saved.numbers) ? saved.numbers.filter(isInRange) : [];
-            numbers = Array.isArray(saved.numbers) ? [...new Set(savedNumbers)] : fullRange(count);
+            numbers = Array.isArray(saved.numbers) ? savedNumbers : fullRange(count);
             drawn = Array.isArray(saved.drawn) ? saved.drawn.filter(isInRange) : [];
             pendingRemoval = isInRange(saved.pendingRemoval) && numbers.includes(saved.pendingRemoval)
                 ? saved.pendingRemoval
                 : null;
 
-            // Keep the saved layout unless it puts consecutive numbers side by
-            // side (layouts saved before pockets were shuffled were 1..n).
-            if (numbers.length > 4 && clashes(numbers) > 0) {
-                numbers = arrangePockets(numbers);
+            // Keep the saved layout only if it is one this version would make:
+            // every number on the same number of pockets, and no clashes once
+            // a clean layout is possible (older layouts were 1..n in order).
+            const distinct = distinctNumbers();
+            const copies = copiesFor(distinct.length);
+            const even = distinct.every((v) => numbers.filter((x) => x === v).length === copies);
+            if (!even || (distinct.length > 4 && clashes(numbers) > 0)) {
+                numbers = layoutWheel(distinct.length ? distinct : fullRange(count));
                 saveSettings();
             }
         }
@@ -1198,6 +1290,7 @@
             const chip = e.target.closest('.chip');
             if (chip) resetWheel(chip.dataset.count);
         });
+        els.fillWheel.addEventListener('change', relayoutWheel);
         els.noRepeat.addEventListener('change', () => {
             renderCounts();
             saveSettings();
@@ -1226,7 +1319,7 @@
         renderCounts();
         renderHistory();
         resizeCanvas();
-        if (numbers.length < count || pendingRemoval !== null) {
+        if (distinctNumbers().length < count || pendingRemoval !== null) {
             setStatus(`${remainingAfterPending()} of ${count} numbers left. Press Spin, or hit Space.`);
         }
 
@@ -1234,7 +1327,7 @@
         // physics headless, for checking that every pocket is equally likely.
         window.kroulette = {
             PHYS, GEO,
-            state: () => ({ count, numbers: [...numbers], drawn: [...drawn], pendingRemoval, spinning,
+            state: () => ({ count, numbers: [...numbers], distinct: distinctNumbers(), drawn: [...drawn], pendingRemoval, spinning,
                 settled: sim.settled, time: sim.time, pocket: sim.pocketIndex }),
             simulate(n = 10, trials = 1000) {
                 const counts = new Array(n).fill(0);
