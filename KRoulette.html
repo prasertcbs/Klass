@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="en" data-app="kroulette">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roulette – Klass</title>
+    <meta name="description" content="Pick a number from 1 to n with a physically simulated roulette wheel — a spinning rotor and a bouncing ball decide it.">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icons/favicon-64.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="assets/fonts/inter.css">
+    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="assets/klass.css">
+    <link rel="stylesheet" href="assets/accents.css">
+    <script src="assets/tailwind.js"></script>
+    <script src="assets/theme.js"></script>
+    <script src="assets/klass-util.js"></script>
+    <style>
+        /* Sized from its container, as in KWheel; the ResizeObserver repaints
+           at the new resolution when focus mode gives it a bigger box. */
+        .wheel-box {
+            position: relative;
+            width: min(var(--wheel-size, 30rem), 100%);
+            aspect-ratio: 1;
+            margin-inline: auto;
+        }
+        #wheelCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .winner-label {
+            font-size: clamp(2.5rem, 8vw, 4.5rem);
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+        .winner {
+            animation:
+                pop 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+                pulse 0.5s ease-in-out 0.6s infinite alternate;
+        }
+        @keyframes pop {
+            0% { transform: scale(0.9); }
+            55% { transform: scale(1.08); }
+            100% { transform: scale(1); }
+        }
+        @keyframes pulse {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(1.05); opacity: 0.8; }
+        }
+
+        .chip {
+            padding: 0.4rem 0.85rem;
+            border-radius: 0.5rem;
+            border: 1px solid var(--border-strong);
+            background-color: var(--surface);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.875rem;
+            font-variant-numeric: tabular-nums;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        }
+        .chip:hover:not(:disabled) { background-color: var(--surface-2); color: var(--text); }
+        .chip.is-active {
+            background-color: var(--accent-soft);
+            border-color: var(--accent-border);
+            color: var(--accent-fg);
+        }
+        .chip:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .num-input { width: 5.5rem; text-align: center; font-variant-numeric: tabular-nums; }
+
+        .drawn-badge { font-variant-numeric: tabular-nums; }
+
+        .confetti {
+            position: fixed;
+            top: -10px;
+            width: 10px;
+            height: 10px;
+            z-index: 300;
+            pointer-events: none;
+            animation: confetti-fall 3s ease-in forwards;
+        }
+        @keyframes confetti-fall {
+            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+
+        /* ---- Projector focus mode (same overlay pattern as the other tools) ---- */
+        .focus-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadein 0.25s ease forwards;
+        }
+        .focus-overlay[hidden] { display: none; }
+        @keyframes fadein {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .focus-content {
+            width: min(1400px, 92vw);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Wheel beside the result on a landscape projector, so the wheel can
+           use nearly the full height. */
+        .focus-content #wheelStage {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3rem;
+            width: 100%;
+            max-height: 100vh;
+            padding: 3.5rem 0 1.5rem;
+        }
+        .focus-content #wheelStage > * { margin-top: 0; }
+        .focus-content .wheel-box { --wheel-size: min(82vh, 52vw); margin-inline: 0; flex: none; }
+        .focus-content .stage-side { flex-direction: column; min-width: 16rem; }
+        .focus-content .winner-label { font-size: clamp(4rem, 12vw, 9rem); }
+        @media (max-aspect-ratio: 1/1) {
+            .focus-content #wheelStage { flex-direction: column; gap: 1.25rem; }
+            .focus-content .wheel-box { --wheel-size: min(60vh, 92vw); }
+        }
+        .exit-focus {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            opacity: 0.5;
+        }
+        .exit-focus:hover { opacity: 1; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .focus-overlay { animation: none; }
+            .winner { animation: none; }
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col">
+    <nav class="k-nav">
+        <div class="container mx-auto max-w-5xl px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="index.html" class="flex items-center gap-3">
+                    <img class="k-logo" src="icons/icon.svg" alt="">
+                    <span class="text-lg font-bold">Klass</span>
+                </a>
+                <span class="k-badge">Roulette</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="focusBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Focus mode" title="Focus mode">
+                    <i class="fa-solid fa-expand"></i>
+                </button>
+                <button id="themeToggle" class="k-btn k-btn-secondary k-btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <header class="container mx-auto max-w-5xl px-6 pt-10 pb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Roulette</h1>
+        <p class="k-status text-base max-w-xl mx-auto">Pick a number from 1 to n. No animation script decides it: a spinning rotor and a bouncing ball do, simulated with real physics.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto max-w-5xl px-6 pb-16">
+        <div class="space-y-6">
+
+            <div class="k-card p-6">
+                <div id="wheelStage">
+                    <div class="wheel-box">
+                        <canvas id="wheelCanvas" role="img" aria-label="Roulette wheel"></canvas>
+                    </div>
+
+                    <div class="stage-side flex flex-wrap items-center justify-center gap-6 mt-6">
+                        <button id="spinBtn" class="k-btn k-btn-primary text-lg" style="padding: 0.875rem 2.5rem;">
+                            <i class="fa-solid fa-circle-dot"></i>Spin
+                        </button>
+
+                        <div id="winnerDisplay" class="k-stage px-8 py-4 text-center" hidden>
+                            <div class="k-label mb-1">Number</div>
+                            <div id="winnerNumber" class="winner-label t-accent" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="statusBar" class="k-status mt-6 pt-4 text-center" style="border-top: 1px solid var(--border);" role="status">
+                    Press Spin, or hit Space.
+                </div>
+            </div>
+
+            <div class="grid gap-6 lg:grid-cols-2">
+                <div class="k-card p-6">
+                    <h2 class="k-card-title mb-4"><i class="fa-solid fa-sliders"></i>Numbers</h2>
+
+                    <label for="countInput" class="k-label block mb-2">Pick from 1 to n</label>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button id="countDown" class="k-btn k-btn-secondary k-btn-icon" aria-label="Fewer numbers" title="Fewer numbers">
+                            <i class="fa-solid fa-minus"></i>
+                        </button>
+                        <input type="number" id="countInput" min="2" max="60" step="1" inputmode="numeric" class="k-input num-input">
+                        <button id="countUp" class="k-btn k-btn-secondary k-btn-icon" aria-label="More numbers" title="More numbers">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                        <div class="flex flex-wrap gap-2 ml-1" id="countPresets">
+                            <button class="chip" data-count="6">6</button>
+                            <button class="chip" data-count="10">10</button>
+                            <button class="chip" data-count="20">20</button>
+                            <button class="chip" data-count="30">30</button>
+                            <button class="chip" data-count="40">40</button>
+                        </div>
+                    </div>
+                    <p class="k-status mt-2 text-sm">2 to 60. Past 60, a pocket gets too narrow for the ball.</p>
+
+                    <div class="mt-4 pt-4 space-y-3" style="border-top: 1px solid var(--border);">
+                        <label class="flex items-center gap-2 k-label cursor-pointer">
+                            <input type="checkbox" id="noRepeat" checked class="k-check">
+                            Don't repeat numbers: remove each drawn number on the next spin
+                        </label>
+                        <label class="flex items-center gap-2 k-label cursor-pointer">
+                            <input type="checkbox" id="soundEnabled" checked class="k-check">
+                            Play sound effects
+                        </label>
+                    </div>
+                </div>
+
+                <div class="k-card p-6">
+                    <div class="flex items-center justify-between mb-4 gap-2">
+                        <h2 class="k-card-title"><i class="fa-solid fa-clock-rotate-left"></i>Drawn</h2>
+                        <div class="flex items-center gap-2">
+                            <div class="k-badge"><span id="remainingCount">0</span><span class="font-normal">left on the wheel</span></div>
+                            <button id="resetBtn" class="k-btn k-btn-secondary k-btn-icon" aria-label="Reset wheel and history" title="Reset wheel and history">
+                                <i class="fa-solid fa-rotate-left"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="historyList" class="flex flex-wrap gap-2 content-start min-h-[3rem]">
+                        <span class="k-status">No spins yet</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="k-footer">
+        <div class="container mx-auto max-w-5xl px-6 py-6 text-center">
+            <span>&copy; 2025 <a href="https://github.com/prasertcbs" target="_blank" rel="noopener" class="t-accent hover:underline">Prasert Kanawattanachai</a> &middot; <a href="index.html" class="t-accent hover:underline">All tools</a></span>
+        </div>
+    </footer>
+
+    <!-- Projector focus mode: #wheelStage is moved in here while open -->
+    <div id="focusOverlay" class="focus-overlay" hidden>
+        <div id="focusContent" class="focus-content"></div>
+        <button id="exitFocusBtn" class="k-btn k-btn-secondary exit-focus">✕ Exit (Esc)</button>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+
+        const els = {
+            canvas: $('wheelCanvas'),
+            wheelBox: document.querySelector('.wheel-box'),
+            stage: $('wheelStage'),
+            spinBtn: $('spinBtn'),
+            winnerDisplay: $('winnerDisplay'),
+            winnerNumber: $('winnerNumber'),
+            statusBar: $('statusBar'),
+            countInput: $('countInput'),
+            countDown: $('countDown'),
+            countUp: $('countUp'),
+            countPresets: $('countPresets'),
+            noRepeat: $('noRepeat'),
+            soundEnabled: $('soundEnabled'),
+            remainingCount: $('remainingCount'),
+            resetBtn: $('resetBtn'),
+            historyList: $('historyList'),
+            focusBtn: $('focusBtn'),
+            focusOverlay: $('focusOverlay'),
+            focusContent: $('focusContent'),
+            exitFocusBtn: $('exitFocusBtn'),
+        };
+
+        const ctx = els.canvas.getContext('2d');
+        const MIN_COUNT = 2;
+        const MAX_COUNT = 60;
+        const DEFAULT_COUNT = 10;
+
+        /* ---- Physics ----------------------------------------------------- */
+
+        // Geometry in wheel radii (the outer rim is 1), measured from the centre.
+        const GEO = {
+            hub: 0.48,          // turret cone: the inner wall of the pockets
+            pocketOuter: 0.71,  // outer lip of the pocket ring; frets run hub → here
+            numberRing: 0.8,    // outer edge of the rotor's number ring
+            deflector: 0.855,   // ring of eight diamonds on the bowl
+            deflectorR: 0.02,
+            track: 0.955,       // outer wall of the ball track
+        };
+        const PHYS = {
+            dt: 1 / 600,             // fixed step; small enough that a fast ball can't skip a fret
+            rotorFriction: 0.07,     // rad/s² bearing friction
+            rotorDrag: 0.02,         // 1/s viscous term
+            bowlSlope: 16,           // inward pull of the tilted bowl (and track)
+            ringSlope: 8,            // the number ring is nearly flat, so the ball lingers on it
+            pocketSlope: 4,          // gentler pull across the pocket floor
+            trackFriction: 1.1,      // rolling friction against the track wall
+            bowlFriction: 0.9,       // rolling friction on the bowl
+            airDrag: 0.06,
+            floorGrip: 1.6,          // how fast the pocket floor drags the ball along with the rotor
+            ringGrip: 0.5,           // the polished number ring grips less
+            ringKick: 0.5,           // hop height per unit of speed across the number ring
+            ringScrub: 0.8,          // speed kept (relative to the rotor) per strike on the ring
+            ringScatter: 0.35,       // random sideways knock per strike
+            ringMinSpeed: 0.5,       // below this the ball just rolls on the ring
+            lipDamp: 0.6,            // share of inward speed lost per strike
+            gravityZ: 16,            // pulls the hop back down
+            eHop: 0.45,              // bounce when a hop lands
+            fretHeight: 0.018,       // a ball higher than this sails over the frets
+            deflectorHeight: 0.02,   // a ball higher than this clears the diamonds
+            deflectorKeep: 0.7,      // share of speed kept when hitting one
+            deflectorTurn: 0.9,      // rad; how far a hit can knock its heading
+            deflectorKick: 0.3,      // hop from hitting one
+            eTrack: 0.1, eFret: 0.6, eHub: 0.35,
+            settleSpeed: 0.12,       // relative to the rotor surface
+            settleTime: 0.5,
+            timeout: 25,
+        };
+
+        // Uniform [0, 1) from the OS entropy pool, drawn in batches.
+        const cryptoRandom = (() => {
+            const buffer = new Uint32Array(256);
+            let index = buffer.length;
+            return () => {
+                if (index === buffer.length) {
+                    crypto.getRandomValues(buffer);
+                    index = 0;
+                }
+                return buffer[index++] / 4294967296;
+            };
+        })();
+
+        // Pockets shrink as n grows; the ball shrinks with them so it always fits.
+        function ballRadiusFor(n) {
+            const midArc = (2 * Math.PI * (GEO.hub + GEO.pocketOuter) / 2) / n;
+            return Math.min(0.03, midArc * 0.36);
+        }
+
+        function createSim(n, rng, phi = 0) {
+            const angle = rng() * 2 * Math.PI;
+            const speed = 9 + rng() * 3.5;
+            const ballR = ballRadiusFor(n);
+            const r = GEO.track - ballR;
+            return {
+                n, rng, ballR,
+                phi,
+                omega: 2.6 + rng() * 1.4,          // rotor turns clockwise (screen)
+                x: r * Math.cos(angle), y: r * Math.sin(angle),
+                // Ball launched counter-clockwise, against the rotor.
+                vx: speed * Math.sin(angle), vy: -speed * Math.cos(angle),
+                z: 0, vz: 0,
+                time: 0,
+                calm: 0,
+                settled: false,
+                timedOut: false,
+                pocketAngle: 0, pocketRadius: 0,   // ball position in rotor frame once settled
+                sector: -1, ringHops: 0,                       // divider-bounded sector under the ball, for ring rattle
+                impacts: [],                       // collision speeds, drained by the page for sound
+            };
+        }
+
+        // Before the first spin: the ball waits at the top of the track.
+        function createIdle(n, phi = 0) {
+            const sim = createSim(n, () => 0.5, phi);
+            const r = GEO.track - sim.ballR;
+            Object.assign(sim, { idle: true, omega: 0, x: 0, y: -r, vx: 0, vy: 0 });
+            return sim;
+        }
+
+        const TAU = 2 * Math.PI;
+        const wrap = (a) => ((a % TAU) + TAU) % TAU;
+
+        function pocketIndex(sim) {
+            const a = sim.settled ? sim.pocketAngle : wrap(Math.atan2(sim.y, sim.x) - sim.phi);
+            return Math.floor(a / (TAU / sim.n)) % sim.n;
+        }
+
+        function impact(sim, speed, kick) {
+            if (speed > 0.25) sim.impacts.push(speed);
+            if (kick) sim.vz = Math.max(sim.vz, Math.min(speed * kick, 2.2));
+        }
+
+        // Bounce off a wall moving at (sx, sy) with outward normal (nx, ny).
+        function bounce(sim, nx, ny, sx, sy, e, grip, jitter, kick) {
+            if (jitter) {
+                const t = (sim.rng() - 0.5) * jitter;
+                const c = Math.cos(t), s = Math.sin(t);
+                [nx, ny] = [nx * c - ny * s, nx * s + ny * c];
+            }
+            let rx = sim.vx - sx, ry = sim.vy - sy;
+            const vn = rx * nx + ry * ny;
+            if (vn >= 0) return;
+            rx -= (1 + e) * vn * nx;
+            ry -= (1 + e) * vn * ny;
+            // Scrub some tangential speed at the contact.
+            const vt = rx * -ny + ry * nx;
+            rx -= grip * vt * -ny;
+            ry -= grip * vt * nx;
+            sim.vx = rx + sx;
+            sim.vy = ry + sy;
+            impact(sim, -vn, kick);
+        }
+
+        function step(sim) {
+            const dt = PHYS.dt;
+            sim.time += dt;
+
+            // Rotor: bearing friction plus a little viscous drag.
+            const decel = PHYS.rotorFriction + PHYS.rotorDrag * Math.abs(sim.omega);
+            sim.omega = Math.sign(sim.omega) * Math.max(0, Math.abs(sim.omega) - decel * dt);
+            sim.phi = wrap(sim.phi + sim.omega * dt);
+
+            if (sim.settled || sim.idle) return;
+
+            const { ballR } = sim;
+            let r = Math.hypot(sim.x, sim.y);
+            let ux = sim.x / r, uy = sim.y / r;
+            const speed = Math.hypot(sim.vx, sim.vy);
+            const grounded = sim.z <= 0;
+            const inPockets = r < GEO.pocketOuter;
+            const onRing = !inPockets && r < GEO.numberRing;
+
+            // Gravity down the tilted bowl, rolling friction, air.
+            const slope = inPockets ? PHYS.pocketSlope : onRing ? PHYS.ringSlope : PHYS.bowlSlope;
+            // Only a ball touching the surface feels its slope; in the air it flies straight.
+            let ax = grounded ? -ux * slope : 0;
+            let ay = grounded ? -uy * slope : 0;
+            const onTrack = r >= GEO.track - ballR - 1e-4;
+            if (grounded && !inPockets && !onRing && speed > 1e-6) {
+                const f = onTrack ? PHYS.trackFriction : PHYS.bowlFriction;
+                ax -= (sim.vx / speed) * f;
+                ay -= (sim.vy / speed) * f;
+            }
+            ax -= sim.vx * PHYS.airDrag;
+            ay -= sim.vy * PHYS.airDrag;
+
+            // The pocket floor and number ring carry the ball along with the rotor.
+            if (grounded && (inPockets || onRing)) {
+                const grip = inPockets ? PHYS.floorGrip : PHYS.ringGrip;
+                const sx = -sim.omega * sim.y, sy = sim.omega * sim.x;
+                ax -= (sim.vx - sx) * grip;
+                ay -= (sim.vy - sy) * grip;
+            }
+
+            sim.vx += ax * dt;
+            sim.vy += ay * dt;
+            sim.x += sim.vx * dt;
+            sim.y += sim.vy * dt;
+
+            // Hop.
+            let landed = false;
+            if (sim.z > 0 || sim.vz > 0) {
+                sim.vz -= PHYS.gravityZ * dt;
+                sim.z += sim.vz * dt;
+                if (sim.z <= 0) {
+                    landed = true;
+                    sim.z = 0;
+                    sim.vz = -sim.vz * PHYS.eHop < 0.2 ? 0 : -sim.vz * PHYS.eHop;
+                }
+            }
+
+            const prevR = r;
+            r = Math.hypot(sim.x, sim.y);
+            ux = sim.x / r; uy = sim.y / r;
+
+            // Number ring: the ball comes off the bowl onto a surface spinning
+            // the other way, and each raised divider it runs over throws it up.
+            if (r < GEO.numberRing && r >= GEO.pocketOuter) {
+                const slice = TAU / sim.n;
+                const sector = Math.floor(wrap(Math.atan2(sim.y, sim.x) - sim.phi) / slice);
+                const sx = -sim.omega * sim.y, sy = sim.omega * sim.x;
+                const relSpeed = Math.hypot(sim.vx - sx, sim.vy - sy);
+                const touchdown = (landed || (prevR >= GEO.numberRing && sim.z <= 0))
+                    || (sim.sector !== -1 && sector !== sim.sector && sim.z <= 0);
+                if (touchdown && relSpeed > PHYS.ringMinSpeed) {
+                    sim.ringHops++;
+                    // Striking a surface spinning the other way throws the ball
+                    // back up; each strike scrubs off speed relative to the rotor
+                    // and most of the ball's run toward the centre.
+                    const inward = Math.min(0, sim.vx * ux + sim.vy * uy);
+                    sim.vx -= inward * PHYS.lipDamp * ux;
+                    sim.vy -= inward * PHYS.lipDamp * uy;
+                    const keep = PHYS.ringScrub * (0.9 + 0.2 * sim.rng());
+                    const scatter = (sim.rng() - 0.5) * PHYS.ringScatter * relSpeed;
+                    sim.vx = sx + (sim.vx - sx) * keep + ux * scatter;
+                    sim.vy = sy + (sim.vy - sy) * keep + uy * scatter;
+                    sim.vz = 0;
+                    impact(sim, relSpeed, PHYS.ringKick * (0.6 + 0.8 * sim.rng()));
+                }
+                sim.sector = sector;
+            } else {
+                sim.sector = -1;
+            }
+
+            // Outer track wall.
+            if (r > GEO.track - ballR) {
+                const target = GEO.track - ballR;
+                sim.x = ux * target; sim.y = uy * target;
+                bounce(sim, -ux, -uy, 0, 0, PHYS.eTrack, 0, 0, 0);
+                r = target;
+            }
+
+            // Hub / turret.
+            if (r < GEO.hub + ballR) {
+                const target = GEO.hub + ballR;
+                sim.x = ux * target; sim.y = uy * target;
+                const sx = -sim.omega * sim.y, sy = sim.omega * sim.x;
+                bounce(sim, ux, uy, sx, sy, PHYS.eHub, 0.1, 0, 0.1);
+                r = target;
+            }
+
+            // Diamond deflectors, fixed to the bowl.
+            if (Math.abs(r - GEO.deflector) < GEO.deflectorR + ballR) {
+                const k = Math.round((Math.atan2(sim.y, sim.x) - Math.PI / 8) / (TAU / 8));
+                const a = k * (TAU / 8) + Math.PI / 8;
+                const cx = GEO.deflector * Math.cos(a), cy = GEO.deflector * Math.sin(a);
+                const dx = sim.x - cx, dy = sim.y - cy;
+                const d = Math.hypot(dx, dy);
+                const min = GEO.deflectorR + ballR;
+                // Low diamonds: the ball rides up over them rather than
+                // stopping dead, so they throw it into the air and knock its
+                // heading off course, but take only part of its speed.
+                if (d < min && d > 1e-9 && sim.z < PHYS.deflectorHeight) {
+                    const nx = dx / d, ny = dy / d;
+                    const vn = sim.vx * nx + sim.vy * ny;
+                    if (vn < 0) {
+                        const hit = Math.hypot(sim.vx, sim.vy);
+                        const keep = PHYS.deflectorKeep * (0.85 + 0.3 * sim.rng());
+                        // Turned mostly inward, toward the rotor.
+                        const turn = (sim.rng() - 0.3) * PHYS.deflectorTurn * Math.sign(sim.vx * -uy + sim.vy * ux || 1);
+                        const c = Math.cos(turn), sn = Math.sin(turn);
+                        [sim.vx, sim.vy] = [(sim.vx * c - sim.vy * sn) * keep, (sim.vx * sn + sim.vy * c) * keep];
+                        impact(sim, -vn, 0);
+                        sim.vz = Math.max(sim.vz, Math.min(hit * PHYS.deflectorKick * (0.7 + 0.6 * sim.rng()), 2.2));
+                    }
+                }
+            }
+
+            // Frets: radial bars on the rotor between neighbouring pockets. Only
+            // the two bounding the pocket the ball is over can be touching it.
+            if (r < GEO.pocketOuter + ballR && sim.z < PHYS.fretHeight) {
+                const slice = TAU / sim.n;
+                const rel = wrap(Math.atan2(sim.y, sim.x) - sim.phi);
+                const k = Math.floor(rel / slice);
+                for (const edge of [k, k + 1]) {
+                    const a = sim.phi + edge * slice;
+                    const fx = Math.cos(a), fy = Math.sin(a);
+                    const along = Math.min(GEO.pocketOuter, Math.max(GEO.hub, sim.x * fx + sim.y * fy));
+                    const cx = fx * along, cy = fy * along;
+                    const dx = sim.x - cx, dy = sim.y - cy;
+                    const d = Math.hypot(dx, dy);
+                    const min = ballR + 0.004;
+                    if (d < min && d > 1e-9) {
+                        const nx = dx / d, ny = dy / d;
+                        sim.x = cx + nx * min; sim.y = cy + ny * min;
+                        bounce(sim, nx, ny, -sim.omega * cy, sim.omega * cx, PHYS.eFret, 0.15, 0.6, 0.55);
+                    }
+                }
+            }
+
+            // Settled: sitting in a pocket, moving with the rotor.
+            r = Math.hypot(sim.x, sim.y);
+            if (r < GEO.pocketOuter - ballR * 0.5 && sim.z <= 0) {
+                const rvx = sim.vx + sim.omega * sim.y, rvy = sim.vy - sim.omega * sim.x;
+                sim.calm = Math.hypot(rvx, rvy) < PHYS.settleSpeed ? sim.calm + dt : 0;
+            } else {
+                sim.calm = 0;
+            }
+            if (sim.calm >= PHYS.settleTime || sim.time >= PHYS.timeout) {
+                sim.timedOut = sim.calm < PHYS.settleTime;
+                lockBall(sim);
+            }
+        }
+
+        // Freeze the ball into the pocket it's over; from here it rides the rotor.
+        function lockBall(sim) {
+            const slice = TAU / sim.n;
+            const k = pocketIndex(sim);
+            sim.settled = true;
+            sim.pocketIndex = k;
+            sim.pocketRadius = Math.min(GEO.pocketOuter - sim.ballR,
+                Math.max(GEO.hub + sim.ballR, Math.hypot(sim.x, sim.y)));
+            // Where it actually sits, nudged clear of the frets — no visible jump.
+            const margin = Math.min(slice / 2, (sim.ballR + 0.004) / sim.pocketRadius);
+            const rel = wrap(Math.atan2(sim.y, sim.x) - sim.phi);
+            sim.pocketAngle = Math.min((k + 1) * slice - margin, Math.max(k * slice + margin, rel));
+            sim.z = 0; sim.vz = 0;
+        }
+
+        /* ---- State ------------------------------------------------------- */
+
+        let count = DEFAULT_COUNT;
+        let numbers = [];          // the pockets, in order; shrinks when not repeating
+        let drawn = [];            // most recent first
+        let pendingRemoval = null; // last number stays under the ball until the next spin
+        let sim = null;
+        let spinning = false;
+        let winningPocket = -1;
+
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+        const fullRange = (n) => Array.from({ length: n }, (_, i) => i + 1);
+
+        /* Pocket order around the wheel: shuffled, and no two consecutive
+           numbers side by side (the ring wraps, so first and last count as
+           neighbours too). About one shuffle in eight passes, so a few hundred
+           tries always find one. The fewest-clash layout is kept as a fallback
+           for n ≤ 4, where every layout has a clash. */
+        const clashes = (order) => order.reduce((total, v, i) =>
+            total + (order.length > 1 && Math.abs(v - order[(i + 1) % order.length]) === 1 ? 1 : 0), 0);
+
+        function arrangePockets(values) {
+            let best = null;
+            let bestClashes = Infinity;
+            for (let attempt = 0; attempt < 500 && bestClashes > 0; attempt++) {
+                const order = [...values];
+                for (let i = order.length - 1; i > 0; i--) {
+                    const j = Math.floor(cryptoRandom() * (i + 1));
+                    [order[i], order[j]] = [order[j], order[i]];
+                }
+                const c = clashes(order);
+                if (c < bestClashes) {
+                    best = order;
+                    bestClashes = c;
+                }
+            }
+            return best;
+        }
+        const clampCount = (value) =>
+            Math.min(MAX_COUNT, Math.max(MIN_COUNT, Math.round(Number(value) || DEFAULT_COUNT)));
+
+        /* ---- Rendering --------------------------------------------------- */
+
+        // Backing store in device pixels so the wheel stays sharp on HiDPI
+        // screens and projectors; drawing below works in wheel radii.
+        function resizeCanvas() {
+            const rect = els.wheelBox.getBoundingClientRect();
+            if (!rect.width) return;
+            const dpr = window.devicePixelRatio || 1;
+            els.canvas.width = Math.round(rect.width * dpr);
+            els.canvas.height = Math.round(rect.height * dpr);
+            draw();
+        }
+
+        const COLORS = {
+            red: '#b91c1c',
+            black: '#161a22',
+            green: '#15803d',
+            gold: '#d4a94a',
+        };
+
+        // The wheel is a physical object, so it looks the same in both themes.
+        function draw() {
+            const px = els.canvas.width;
+            if (!px || !sim) return;
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, px, px);
+            // One unit = the wheel's radius, origin at the centre.
+            const scale = px / 2;
+            ctx.setTransform(scale, 0, 0, scale, scale, scale);
+            const hairline = 1 / scale;
+
+            // Wooden rim.
+            const rim = ctx.createRadialGradient(0, 0, 0.9, 0, 0, 1);
+            rim.addColorStop(0, '#7a4a24');
+            rim.addColorStop(0.55, '#5a3418');
+            rim.addColorStop(1, '#3a200e');
+            ctx.beginPath();
+            ctx.arc(0, 0, 0.995, 0, TAU);
+            ctx.fillStyle = rim;
+            ctx.fill();
+
+            // Ball track and sloping bowl, darkening toward the pockets.
+            const bowl = ctx.createRadialGradient(0, 0, GEO.pocketOuter, 0, 0, GEO.track);
+            bowl.addColorStop(0, '#1f140c');
+            bowl.addColorStop(0.7, '#4a2e17');
+            bowl.addColorStop(0.86, '#8a5a2e');
+            bowl.addColorStop(1, '#6b421f');
+            ctx.beginPath();
+            ctx.arc(0, 0, GEO.track, 0, TAU);
+            ctx.fillStyle = bowl;
+            ctx.fill();
+            ctx.lineWidth = 2 * hairline;
+            ctx.strokeStyle = 'rgb(0 0 0 / 0.45)';
+            ctx.stroke();
+
+            drawDeflectors();
+            drawRotor(hairline);
+            drawBall();
+        }
+
+        function drawDeflectors() {
+            for (let k = 0; k < 8; k++) {
+                const a = k * (TAU / 8) + Math.PI / 8;
+                ctx.save();
+                ctx.rotate(a);
+                ctx.translate(GEO.deflector, 0);
+                const long = GEO.deflectorR * 1.9, wide = GEO.deflectorR * 0.95;
+                const g = ctx.createLinearGradient(0, -wide, 0, wide);
+                g.addColorStop(0, '#f5e6b8');
+                g.addColorStop(0.5, COLORS.gold);
+                g.addColorStop(1, '#8a6a22');
+                ctx.beginPath();
+                ctx.moveTo(-long, 0);
+                ctx.lineTo(0, -wide);
+                ctx.lineTo(long, 0);
+                ctx.lineTo(0, wide);
+                ctx.closePath();
+                ctx.fillStyle = g;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function drawRotor(hairline) {
+            const n = sim.n;
+            const slice = TAU / n;
+
+            ctx.save();
+            ctx.rotate(sim.phi);
+
+            // Number ring + pockets as one wedge per number.
+            for (let i = 0; i < n; i++) {
+                const start = i * slice;
+                ctx.beginPath();
+                ctx.arc(0, 0, GEO.numberRing, start, start + slice);
+                ctx.arc(0, 0, GEO.hub, start + slice, start, true);
+                ctx.closePath();
+                // Odd counts would put two reds side by side at the seam, so the
+                // last pocket goes green, like a real wheel's zero.
+                ctx.fillStyle = n % 2 === 1 && i === n - 1
+                    ? COLORS.green
+                    : (i % 2 === 0 ? COLORS.red : COLORS.black);
+                ctx.fill();
+            }
+
+            // Pockets sit lower than the number ring: shade them.
+            const depth = ctx.createRadialGradient(0, 0, GEO.hub, 0, 0, GEO.pocketOuter);
+            depth.addColorStop(0, 'rgb(0 0 0 / 0.45)');
+            depth.addColorStop(0.5, 'rgb(0 0 0 / 0.15)');
+            depth.addColorStop(1, 'rgb(0 0 0 / 0.35)');
+            ctx.beginPath();
+            ctx.arc(0, 0, GEO.pocketOuter, 0, TAU);
+            ctx.arc(0, 0, GEO.hub, 0, TAU, true);
+            ctx.fillStyle = depth;
+            ctx.fill();
+
+            // The pocket the ball landed in.
+            if (winningPocket >= 0 && winningPocket < n) {
+                const start = winningPocket * slice;
+                ctx.beginPath();
+                ctx.arc(0, 0, GEO.numberRing, start, start + slice);
+                ctx.arc(0, 0, GEO.hub, start + slice, start, true);
+                ctx.closePath();
+                ctx.fillStyle = 'rgb(255 255 255 / 0.18)';
+                ctx.fill();
+                ctx.lineWidth = 3 * hairline;
+                ctx.strokeStyle = '#fde68a';
+                ctx.stroke();
+            }
+
+            // Frets and ring edges in brass.
+            ctx.strokeStyle = COLORS.gold;
+            ctx.lineWidth = Math.max(1.5 * hairline, 0.006);
+            ctx.beginPath();
+            for (let i = 0; i < n; i++) {
+                const a = i * slice;
+                ctx.moveTo(Math.cos(a) * GEO.hub, Math.sin(a) * GEO.hub);
+                ctx.lineTo(Math.cos(a) * GEO.numberRing, Math.sin(a) * GEO.numberRing);
+            }
+            ctx.stroke();
+            ctx.lineWidth = 2 * hairline;
+            for (const radius of [GEO.pocketOuter, GEO.numberRing]) {
+                ctx.beginPath();
+                ctx.arc(0, 0, radius, 0, TAU);
+                ctx.stroke();
+            }
+
+            // Numbers, read from outside the wheel like a real one.
+            const labelRadius = (GEO.pocketOuter + GEO.numberRing) / 2;
+            const arc = slice * labelRadius;
+            const digits = String(count).length;
+            const fontSize = Math.min(0.065, (GEO.numberRing - GEO.pocketOuter) * 0.75, arc * (digits > 1 ? 0.62 : 0.8));
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            // Set in real pixels: sub-pixel font sizes render badly in some browsers.
+            ctx.font = `700 ${fontSize / hairline}px Inter, sans-serif`;
+            for (let i = 0; i < n; i++) {
+                const a = (i + 0.5) * slice;
+                ctx.save();
+                ctx.rotate(a);
+                ctx.translate(labelRadius, 0);
+                ctx.rotate(Math.PI / 2);
+                ctx.scale(hairline, hairline);
+                ctx.fillText(String(numbers[i] ?? ''), 0, 0);
+                ctx.restore();
+            }
+
+            // Turret.
+            const cone = ctx.createRadialGradient(-0.08, -0.1, 0.02, 0, 0, GEO.hub);
+            cone.addColorStop(0, '#9a6a3a');
+            cone.addColorStop(0.75, '#5a3418');
+            cone.addColorStop(1, '#2e1a0b');
+            ctx.beginPath();
+            ctx.arc(0, 0, GEO.hub, 0, TAU);
+            ctx.fillStyle = cone;
+            ctx.fill();
+            ctx.lineWidth = 3 * hairline;
+            ctx.strokeStyle = COLORS.gold;
+            ctx.stroke();
+
+            const metal = ctx.createLinearGradient(-0.2, -0.2, 0.2, 0.2);
+            metal.addColorStop(0, '#f8fafc');
+            metal.addColorStop(0.5, '#94a3b8');
+            metal.addColorStop(1, '#e2e8f0');
+            ctx.fillStyle = metal;
+            for (let k = 0; k < 4; k++) {
+                ctx.save();
+                ctx.rotate(k * Math.PI / 2);
+                ctx.fillRect(0, -0.02, 0.28, 0.04);
+                ctx.beginPath();
+                ctx.arc(0.28, 0, 0.037, 0, TAU);
+                ctx.fill();
+                ctx.restore();
+            }
+            ctx.beginPath();
+            ctx.arc(0, 0, 0.085, 0, TAU);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function ballPosition() {
+            if (sim.settled) {
+                const a = sim.phi + sim.pocketAngle;
+                return { x: Math.cos(a) * sim.pocketRadius, y: Math.sin(a) * sim.pocketRadius };
+            }
+            return { x: sim.x, y: sim.y };
+        }
+
+        function drawBall() {
+            const { x, y } = ballPosition();
+            const lift = sim.z;
+            // Seen from above, a hopping ball looms larger and its shadow
+            // falls away from it — exaggerated a little so hops read on a projector.
+            const radius = sim.ballR * (1 + lift * 5);
+
+            ctx.beginPath();
+            ctx.arc(x + sim.ballR * 0.25 + lift * 0.8, y + sim.ballR * 0.35 + lift * 1.2, sim.ballR * Math.max(0.6, 1 - lift * 2), 0, TAU);
+            ctx.fillStyle = `rgb(0 0 0 / ${0.45 * Math.max(0.25, 1 - lift * 8)})`;
+            ctx.fill();
+
+            const g = ctx.createRadialGradient(x - radius * 0.35, y - radius * 0.4, radius * 0.1, x, y, radius);
+            g.addColorStop(0, '#ffffff');
+            g.addColorStop(0.6, '#e5e7eb');
+            g.addColorStop(1, '#9ca3af');
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, TAU);
+            ctx.fillStyle = g;
+            ctx.fill();
+        }
+
+        /* ---- Animation loop ---------------------------------------------- */
+
+        let rafId = 0;
+        let lastFrame = 0;
+        let accumulator = 0;
+
+        function ensureRunning() {
+            if (rafId) return;
+            lastFrame = performance.now();
+            accumulator = 0;
+            rafId = requestAnimationFrame(frame);
+        }
+
+        function frame(now) {
+            // Capped, so a tab that was in the background pauses rather than
+            // fast-forwarding through the spin.
+            accumulator += Math.min(0.05, (now - lastFrame) / 1000);
+            lastFrame = now;
+
+            const wasSettled = sim.settled;
+            while (accumulator >= PHYS.dt) {
+                step(sim);
+                accumulator -= PHYS.dt;
+            }
+            playImpacts();
+            if (spinning && !wasSettled && sim.settled) finishSpin();
+
+            draw();
+
+            const moving = sim.omega > 0 || (!sim.idle && !sim.settled);
+            rafId = moving ? requestAnimationFrame(frame) : 0;
+        }
+
+        /* ---- Spinning ---------------------------------------------------- */
+
+        function spin() {
+            if (spinning) return;
+
+            if (pendingRemoval !== null && els.noRepeat.checked) {
+                const index = numbers.indexOf(pendingRemoval);
+                // Removing a pocket can leave two consecutive numbers side by
+                // side, so the rest are re-laid out; every pocket resizes
+                // anyway when the count changes.
+                if (index !== -1) {
+                    numbers.splice(index, 1);
+                    numbers = arrangePockets(numbers);
+                }
+            }
+            pendingRemoval = null;
+            winningPocket = -1;
+
+            if (numbers.length < 2) {
+                saveSettings();
+                renderCounts();
+                const coast = sim.omega;
+                sim = createIdle(Math.max(1, numbers.length), sim.phi);
+                sim.omega = coast;
+                draw();
+                ensureRunning();
+                setStatus(numbers.length === 1
+                    ? `Only ${numbers[0]} is left. Press Reset to put every number back.`
+                    : 'Every number has been drawn. Press Reset to start again.');
+                return;
+            }
+
+            unlockAudio();
+            spinning = true;
+            els.winnerDisplay.hidden = true;
+            els.winnerNumber.classList.remove('winner');
+            setControlsDisabled(true);
+            setStatus('Ball in play…');
+
+            // The rotor keeps its angle; a fresh launch gives it a new push.
+            sim = createSim(numbers.length, cryptoRandom, sim.phi);
+            renderCounts();
+            saveSettings();
+            ensureRunning();
+        }
+
+        function finishSpin() {
+            spinning = false;
+            winningPocket = sim.pocketIndex;
+            const number = numbers[winningPocket];
+
+            els.winnerNumber.textContent = number;
+            els.winnerDisplay.hidden = false;
+            els.winnerNumber.classList.add('winner');
+
+            drawn.unshift(number);
+            renderHistory();
+            playFanfare();
+            launchConfetti();
+
+            if (els.noRepeat.checked) {
+                // Deferred, like KWheel: taking the pocket away now would pull it
+                // out from under the ball while everyone is looking at it.
+                pendingRemoval = number;
+                setStatus(`${number}! It comes off the wheel on the next spin.`);
+            } else {
+                setStatus(`${number}!`);
+            }
+            renderCounts();
+            setControlsDisabled(false);
+            saveSettings();
+        }
+
+        function setControlsDisabled(disabled) {
+            els.spinBtn.disabled = disabled;
+            els.resetBtn.disabled = disabled;
+            els.countInput.disabled = disabled;
+            els.countDown.disabled = disabled;
+            els.countUp.disabled = disabled;
+            els.countPresets.querySelectorAll('.chip').forEach((chip) => { chip.disabled = disabled; });
+        }
+
+        /* ---- Numbers, history, status ------------------------------------ */
+
+        function setStatus(message) {
+            els.statusBar.textContent = message;
+        }
+
+        function remainingAfterPending() {
+            return numbers.length - (pendingRemoval !== null && els.noRepeat.checked ? 1 : 0);
+        }
+
+        function renderCounts() {
+            els.remainingCount.textContent = remainingAfterPending();
+            els.countInput.value = count;
+            els.countPresets.querySelectorAll('.chip').forEach((chip) => {
+                chip.classList.toggle('is-active', Number(chip.dataset.count) === count);
+            });
+        }
+
+        function renderHistory() {
+            if (drawn.length === 0) {
+                els.historyList.innerHTML = '<span class="k-status">No spins yet</span>';
+                return;
+            }
+            // Numbers only, so there is nothing to escape.
+            els.historyList.innerHTML = drawn
+                .map((number, i) =>
+                    `<span class="k-badge drawn-badge"><span class="font-normal t-faint">${drawn.length - i}</span>${Number(number)}</span>`)
+                .join('');
+        }
+
+        // A new n, or Reset: every number back on the wheel, history cleared.
+        function resetWheel(newCount = count) {
+            if (spinning) return;
+            count = clampCount(newCount);
+            numbers = arrangePockets(fullRange(count));
+            drawn = [];
+            pendingRemoval = null;
+            winningPocket = -1;
+            // The rotor coasts on; only the pockets change.
+            const coast = sim ? sim.omega : 0;
+            sim = createIdle(count, sim ? sim.phi : 0);
+            sim.omega = coast;
+            els.winnerDisplay.hidden = true;
+            els.winnerNumber.classList.remove('winner');
+            renderCounts();
+            renderHistory();
+            draw();
+            ensureRunning();
+            saveSettings();
+            setStatus(`Numbers 1–${count} on the wheel. Press Spin, or hit Space.`);
+        }
+
+        /* ---- Settings ---------------------------------------------------- */
+
+        const STORAGE_KEY = 'kroulette.settings.v1';
+
+        function saveSettings() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    count,
+                    numbers,
+                    drawn,
+                    pendingRemoval,
+                    noRepeat: els.noRepeat.checked,
+                    sound: els.soundEnabled.checked,
+                }));
+            } catch { /* storage may be unavailable; settings are non-essential */ }
+        }
+
+        function restoreSettings() {
+            let saved = {};
+            try {
+                saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {};
+            } catch { /* ignore malformed state */ }
+
+            if (typeof saved.noRepeat === 'boolean') els.noRepeat.checked = saved.noRepeat;
+            if (typeof saved.sound === 'boolean') els.soundEnabled.checked = saved.sound;
+
+            count = clampCount(saved.count);
+            const isInRange = (v) => Number.isInteger(v) && v >= 1 && v <= count;
+            const savedNumbers = Array.isArray(saved.numbers) ? saved.numbers.filter(isInRange) : [];
+            numbers = Array.isArray(saved.numbers) ? [...new Set(savedNumbers)] : fullRange(count);
+            drawn = Array.isArray(saved.drawn) ? saved.drawn.filter(isInRange) : [];
+            pendingRemoval = isInRange(saved.pendingRemoval) && numbers.includes(saved.pendingRemoval)
+                ? saved.pendingRemoval
+                : null;
+
+            // Keep the saved layout unless it puts consecutive numbers side by
+            // side (layouts saved before pockets were shuffled were 1..n).
+            if (numbers.length > 4 && clashes(numbers) > 0) {
+                numbers = arrangePockets(numbers);
+                saveSettings();
+            }
+        }
+
+        /* ---- Sound ------------------------------------------------------- */
+
+        // One shared context, created on the first spin gesture (see KWheel).
+        let audioCtx = null;
+
+        function unlockAudio() {
+            if (!els.soundEnabled.checked) return;
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function tone(frequency, startOffset, duration, peak, type = 'sine') {
+            const at = audioCtx.currentTime + startOffset;
+            const oscillator = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            oscillator.type = type;
+            oscillator.frequency.value = frequency;
+            gain.gain.setValueAtTime(0.0001, at);
+            gain.gain.exponentialRampToValueAtTime(peak, at + 0.004);
+            gain.gain.exponentialRampToValueAtTime(0.0001, at + duration);
+            oscillator.connect(gain);
+            gain.connect(audioCtx.destination);
+            oscillator.start(at);
+            oscillator.stop(at + duration + 0.02);
+        }
+
+        let lastClick = 0;
+
+        // One click per frame at most, for the hardest hit, and never closer
+        // than 25 ms — a ball rattling in a pocket would otherwise buzz.
+        function playImpacts() {
+            if (sim.impacts.length === 0) return;
+            const hardest = Math.max(...sim.impacts);
+            sim.impacts.length = 0;
+            if (!els.soundEnabled.checked || !audioCtx) return;
+            const now = performance.now();
+            if (now - lastClick < 25) return;
+            lastClick = now;
+            const peak = Math.min(0.25, 0.03 + hardest * 0.05);
+            tone(2200 + Math.random() * 1800, 0, 0.035, peak, 'triangle');
+        }
+
+        function playFanfare() {
+            if (!els.soundEnabled.checked || !audioCtx) return;
+            [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => tone(freq, i * 0.1, 0.2, 0.15));
+        }
+
+        /* ---- Confetti ---------------------------------------------------- */
+
+        function launchConfetti() {
+            if (reduceMotion.matches) return;
+
+            const colors = [COLORS.red, COLORS.gold, COLORS.green, '#f8fafc', '#1f2937'];
+            const fragment = document.createDocumentFragment();
+            const pieces = [];
+
+            for (let i = 0; i < 50; i++) {
+                const piece = document.createElement('div');
+                piece.className = 'confetti';
+                piece.style.left = `${Math.random() * 100}vw`;
+                piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+                piece.style.animationDuration = `${2 + Math.random() * 2}s`;
+                piece.style.animationDelay = `${Math.random() * 0.5}s`;
+                fragment.appendChild(piece);
+                pieces.push(piece);
+            }
+
+            document.body.appendChild(fragment);
+            setTimeout(() => pieces.forEach((p) => p.remove()), 4500);
+        }
+
+        /* ---- Focus mode -------------------------------------------------- */
+
+        const stageHome = els.stage.parentElement;
+
+        function enterFocus() {
+            els.focusContent.appendChild(els.stage);
+            els.focusOverlay.hidden = false;
+            resizeCanvas();
+        }
+
+        function exitFocus() {
+            stageHome.insertBefore(els.stage, stageHome.firstChild);
+            els.focusOverlay.hidden = true;
+            resizeCanvas();
+        }
+
+        els.focusBtn.addEventListener('click', enterFocus);
+        els.exitFocusBtn.addEventListener('click', exitFocus);
+
+        /* ---- Wiring ------------------------------------------------------ */
+
+        els.spinBtn.addEventListener('click', spin);
+        els.resetBtn.addEventListener('click', () => resetWheel());
+        els.countInput.addEventListener('change', () => resetWheel(els.countInput.value));
+        els.countDown.addEventListener('click', () => resetWheel(count - 1));
+        els.countUp.addEventListener('click', () => resetWheel(count + 1));
+        els.countPresets.addEventListener('click', (e) => {
+            const chip = e.target.closest('.chip');
+            if (chip) resetWheel(chip.dataset.count);
+        });
+        els.noRepeat.addEventListener('change', () => {
+            renderCounts();
+            saveSettings();
+        });
+        els.soundEnabled.addEventListener('change', saveSettings);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !els.focusOverlay.hidden) {
+                exitFocus();
+                return;
+            }
+            const active = document.activeElement;
+            if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) return;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                spin();
+            }
+        });
+
+        new ResizeObserver(resizeCanvas).observe(els.wheelBox);
+        // Labels are drawn in Inter; repaint once it has loaded.
+        if (document.fonts) document.fonts.ready.then(draw);
+
+        restoreSettings();
+        sim = createIdle(numbers.length, cryptoRandom() * TAU);
+        renderCounts();
+        renderHistory();
+        resizeCanvas();
+        if (numbers.length < count || pendingRemoval !== null) {
+            setStatus(`${remainingAfterPending()} of ${count} numbers left. Press Spin, or hit Space.`);
+        }
+
+        // Debug/test surface, per assets/ktempo/app.js. simulate() runs the same
+        // physics headless, for checking that every pocket is equally likely.
+        window.kroulette = {
+            PHYS, GEO,
+            state: () => ({ count, numbers: [...numbers], drawn: [...drawn], pendingRemoval, spinning,
+                settled: sim.settled, time: sim.time, pocket: sim.pocketIndex }),
+            simulate(n = 10, trials = 1000) {
+                const counts = new Array(n).fill(0);
+                let timeouts = 0;
+                let totalTime = 0;
+                for (let t = 0; t < trials; t++) {
+                    const s = createSim(n, cryptoRandom, cryptoRandom() * TAU);
+                    while (!s.settled) {
+                        step(s);
+                        s.impacts.length = 0;
+                    }
+                    counts[s.pocketIndex]++;
+                    if (s.timedOut) timeouts++;
+                    totalTime += s.time;
+                }
+                const expected = trials / n;
+                const chiSquare = counts.reduce((sum, c) => sum + (c - expected) ** 2 / expected, 0);
+                return { counts, chiSquare, degreesOfFreedom: n - 1, timeouts, meanSettleSeconds: totalTime / trials };
+            },
+        };
+    </script>
+    <script src="assets/app.js"></script>
+</body>
+</html>
