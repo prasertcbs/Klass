@@ -664,7 +664,6 @@
         const COLORS = {
             red: '#b91c1c',
             black: '#161a22',
-            green: '#15803d',
             gold: '#d4a94a',
         };
 
@@ -746,11 +745,9 @@
                 ctx.arc(0, 0, GEO.numberRing, start, start + slice);
                 ctx.arc(0, 0, GEO.hub, start + slice, start, true);
                 ctx.closePath();
-                // Odd counts would put two reds side by side at the seam, so the
-                // last pocket goes green, like a real wheel's zero.
-                ctx.fillStyle = n % 2 === 1 && i === n - 1
-                    ? COLORS.green
-                    : (i % 2 === 0 ? COLORS.red : COLORS.black);
+                // Red and black alternate. With an odd count they can't all the
+                // way round, so the first and last pockets are both red.
+                ctx.fillStyle = i % 2 === 0 ? COLORS.red : COLORS.black;
                 ctx.fill();
             }
 
@@ -813,7 +810,15 @@
                 ctx.translate(labelRadius, 0);
                 ctx.rotate(Math.PI / 2);
                 ctx.scale(hairline, hairline);
-                ctx.fillText(String(numbers[i] ?? ''), 0, 0);
+                const label = String(numbers[i] ?? '');
+                ctx.fillText(label, 0, 0);
+                // Labels turn with the wheel, so 6 and 9 read as each other
+                // upside down; underline them, as playing cards do.
+                if (label === '6' || label === '9') {
+                    const px = fontSize / hairline;
+                    const width = ctx.measureText(label).width;
+                    ctx.fillRect(-width / 2, px * 0.42, width, Math.max(1, px * 0.09));
+                }
                 ctx.restore();
             }
 
@@ -1143,7 +1148,7 @@
         function launchConfetti() {
             if (reduceMotion.matches) return;
 
-            const colors = [COLORS.red, COLORS.gold, COLORS.green, '#f8fafc', '#1f2937'];
+            const colors = [COLORS.red, COLORS.gold, '#f8fafc', '#1f2937'];
             const fragment = document.createDocumentFragment();
             const pieces = [];
 
